@@ -1,1 +1,5 @@
-// Flows will be imported for their side effects in this file.
+import { config } from 'dotenv';
+config();
+
+import '@/ai/flows/extract-blood-pressure-data.ts';
+import '@/ai/flows/analyze-blood-pressure-trend.ts';

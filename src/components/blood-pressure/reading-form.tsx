@@ -1,0 +1,266 @@
+'use client';
+
+import type { ChangeEvent } from 'react';
+import { useState, useEffect } from 'react';
+import { useForm, type SubmitHandler } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { ReadingFormData, ReadingFormSchema, type OcrData } from '@/lib/types';
+import { callExtractDataAction } from '@/lib/actions';
+import { useToast } from '@/hooks/use-toast';
+import { UploadCloud, FileScan, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import Image from 'next/image';
+
+interface ReadingFormProps {
+  onReadingAdded: (data: ReadingFormData) => void;
+  isLoadingOcrParent: boolean;
+  setIsLoadingOcrParent: (loading: boolean) => void;
+}
+
+// Utility function to convert File to Data URI
+const fileToDataUri = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
+export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsLoadingOcrParent }: ReadingFormProps) {
+  const { toast } = useToast();
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [ocrStatus, setOcrStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const form = useForm<ReadingFormData>({
+    resolver: zodResolver(ReadingFormSchema),
+    defaultValues: {
+      date: new Date().toISOString().split('T')[0], // Prefill with today's date
+      time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }), // Prefill with current time
+      medications: '',
+    },
+  });
+
+  const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setImagePreview(URL.createObjectURL(file));
+      setIsLoadingOcrParent(true);
+      setOcrStatus('idle');
+      try {
+        const dataUri = await fileToDataUri(file);
+        const extractedData: OcrData = await callExtractDataAction(dataUri);
+        
+        if (extractedData.date) form.setValue('date', extractedData.date);
+        if (extractedData.time) form.setValue('time', extractedData.time);
+        if (extractedData.systolic) form.setValue('systolic', extractedData.systolic);
+        if (extractedData.diastolic) form.setValue('diastolic', extractedData.diastolic);
+        
+        toast({ title: 'OCR Success', description: 'Data extracted. Please verify and complete the form.' });
+        setOcrStatus('success');
+      } catch (error: any) {
+        toast({ variant: 'destructive', title: 'OCR Error', description: error.message || 'Could not extract data from image.' });
+        setOcrStatus('error');
+      } finally {
+        setIsLoadingOcrParent(false);
+      }
+    } else {
+      setImagePreview(null);
+      setOcrStatus('idle');
+    }
+  };
+
+  const onSubmit: SubmitHandler<ReadingFormData> = (data) => {
+    onReadingAdded(data);
+    form.reset({
+      // Keep prefilled date and time, reset others
+      date: new Date().toISOString().split('T')[0],
+      time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+      systolic: undefined,
+      diastolic: undefined,
+      age: data.age, // Keep age and weight if user might enter multiple readings in a session
+      weight: data.weight,
+      medications: '', // Clear medications
+      imageFile: undefined,
+    });
+    setImagePreview(null);
+    setOcrStatus('idle');
+    // Manually clear the file input
+    const fileInput = document.getElementById('imageFile') as HTMLInputElement | null;
+    if (fileInput) {
+        fileInput.value = '';
+    }
+    toast({ title: 'Reading Added', description: 'Your blood pressure reading has been saved.' });
+  };
+  
+  // Set default date and time if not already set by OCR or user
+  useEffect(() => {
+    if (!form.getValues('date')) {
+      form.setValue('date', new Date().toISOString().split('T')[0]);
+    }
+    if (!form.getValues('time')) {
+      form.setValue('time', new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }));
+    }
+  }, [form]);
+
+
+  return (
+    <Card className="shadow-lg">
+      <CardHeader>
+        <CardTitle className="text-2xl flex items-center gap-2">
+          <FileScan className="h-7 w-7 text-primary" />
+          Add New Reading
+        </CardTitle>
+        <CardDescription>Upload an image of your reading or enter details manually. Fill in all fields for accurate tracking.</CardDescription>
+      </CardHeader>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <CardContent className="space-y-6">
+            <FormField
+              control={form.control}
+              name="imageFile"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel htmlFor="imageFile" className="text-base">Upload Image (Optional)</FormLabel>
+                  <FormControl>
+                    <Input 
+                      id="imageFile" 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={(e) => {
+                        field.onChange(e.target.files); // RHF expects FileList
+                        handleImageChange(e);
+                      }}
+                      className="file:text-primary file:font-semibold hover:file:bg-primary/10"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                  {imagePreview && (
+                    <div className="mt-2 relative w-48 h-32 rounded-md overflow-hidden border">
+                      <Image src={imagePreview} alt="Reading preview" layout="fill" objectFit="contain" data-ai-hint="medical device"/>
+                    </div>
+                  )}
+                  {isLoadingOcrParent && <div className="flex items-center mt-2 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing image...</div>}
+                  {ocrStatus === 'success' && !isLoadingOcrParent && <div className="flex items-center mt-2 text-sm text-green-600"><CheckCircle className="mr-2 h-4 w-4" /> OCR successful.</div>}
+                  {ocrStatus === 'error' && !isLoadingOcrParent && <div className="flex items-center mt-2 text-sm text-destructive"><AlertCircle className="mr-2 h-4 w-4" /> OCR failed. Please enter manually.</div>}
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField
+                control={form.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-base">Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="time"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-base">Time</FormLabel>
+                    <FormControl>
+                      <Input type="time" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField
+                control={form.control}
+                name="systolic"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-base">Systolic (SYS)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="e.g., 120" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="diastolic"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-base">Diastolic (DIA)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="e.g., 80" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField
+                control={form.control}
+                name="age"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-base">Age</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="Your current age" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="weight"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-base">Weight (kg)</FormLabel> {/* Specify unit */}
+                    <FormControl>
+                      <Input type="number" placeholder="Your current weight in kg" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="medications"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-base">Medications (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="List any medications you are currently taking, e.g., Lisinopril 10mg" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+          <CardFooter>
+            <Button type="submit" className="w-full md:w-auto" disabled={isLoadingOcrParent || form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
+              Add Reading
+            </Button>
+          </CardFooter>
+        </form>
+      </Form>
+    </Card>
+  );
+}
