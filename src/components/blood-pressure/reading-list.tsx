@@ -1,7 +1,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { type BloodPressureReading } from '@/lib/types';
-import { History, TrendingDown, TrendingUp, TrendingFlat, ThermometerSnowflake, ThermometerSun, Pill } from 'lucide-react';
+import { History, TrendingDown, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, Pill } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ReadingListProps {
@@ -11,12 +11,12 @@ interface ReadingListProps {
 // Function to categorize BP readings
 const getBpCategory = (systolic: number, diastolic: number): { category: string; colorClass: string; Icon: React.ElementType } => {
   if (systolic < 90 || diastolic < 60) return { category: 'Low', colorClass: 'text-blue-500', Icon: ThermometerSnowflake };
-  if (systolic < 120 && diastolic < 80) return { category: 'Normal', colorClass: 'text-green-500', Icon: TrendingFlat };
+  if (systolic < 120 && diastolic < 80) return { category: 'Normal', colorClass: 'text-green-500', Icon: Activity };
   if (systolic >= 120 && systolic <= 129 && diastolic < 80) return { category: 'Elevated', colorClass: 'text-yellow-500', Icon: TrendingUp };
   if ((systolic >= 130 && systolic <= 139) || (diastolic >= 80 && diastolic <= 89)) return { category: 'Hypertension Stage 1', colorClass: 'text-orange-500', Icon: TrendingUp };
   if (systolic >= 140 || diastolic >= 90) return { category: 'Hypertension Stage 2', colorClass: 'text-red-500', Icon: TrendingUp };
   if (systolic > 180 || diastolic > 120) return { category: 'Hypertensive Crisis', colorClass: 'text-red-700 font-bold', Icon: ThermometerSun };
-  return { category: 'N/A', colorClass: 'text-muted-foreground', Icon: TrendingFlat };
+  return { category: 'N/A', colorClass: 'text-muted-foreground', Icon: Activity };
 };
 
 
