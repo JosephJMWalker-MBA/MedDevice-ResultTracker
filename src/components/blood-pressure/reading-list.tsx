@@ -55,7 +55,7 @@ export default function ReadingList({ readings }: ReadingListProps) {
               <TableHead>Diastolic (mmHg)</TableHead>
               <TableHead>Category</TableHead>
               <TableHead className="hidden md:table-cell">Age</TableHead>
-              <TableHead className="hidden md:table-cell">Weight (kg)</TableHead>
+              <TableHead className="hidden md:table-cell">Weight (lbs)</TableHead>
               <TableHead className="hidden lg:table-cell">Medications</TableHead>
             </TableRow>
           </TableHeader>

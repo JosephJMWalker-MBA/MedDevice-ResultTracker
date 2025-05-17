@@ -18,7 +18,7 @@ const AnalyzeBloodPressureTrendInputSchema = z.object({
       systolic: z.number().describe('Systolic blood pressure reading.'),
       diastolic: z.number().describe('Diastolic blood pressure reading.'),
       age: z.number().describe('Age of the user when reading was taken.'),
-      weight: z.number().describe('Weight of the user when reading was taken.'),
+      weight: z.number().describe('Weight of the user in lbs when reading was taken.'),
       medications: z.string().describe('Medications the user is taking when reading was taken.'),
     })
   ).describe('Array of blood pressure readings over the last 30 days.'),
@@ -43,11 +43,12 @@ const prompt = ai.definePrompt({
   prompt: `You are HealthInsightBot, a friendly AI health assistant specializing in blood pressure analysis.
 
   Analyze the following blood pressure readings over the last 30 days to provide a summary, flags, and personalized suggestions.
+  The user provides their weight in pounds (lbs).
   Remember to always remind users that you’re not a medical professional and to consult a doctor for serious concerns.
 
   Blood Pressure Readings:
   {{#each readings}}
-  - Timestamp: {{timestamp}}, Systolic: {{systolic}}, Diastolic: {{diastolic}}, Age: {{age}}, Weight: {{weight}}, Medications: {{medications}}
+  - Timestamp: {{timestamp}}, Systolic: {{systolic}}, Diastolic: {{diastolic}}, Age: {{age}}, Weight: {{weight}} lbs, Medications: {{medications}}
   {{/each}}
 
   Provide:

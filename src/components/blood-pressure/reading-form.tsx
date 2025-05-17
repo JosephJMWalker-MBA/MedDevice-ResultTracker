@@ -236,9 +236,9 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
                 name="weight"
                 render={({ field }) => ( // field.value is '' or number
                   <FormItem>
-                    <FormLabel className="text-base">Weight (kg)</FormLabel>
+                    <FormLabel className="text-base">Weight (lbs)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="Your current weight in kg" {...field} value={field.value ?? ''} />
+                      <Input type="number" placeholder="Your current weight in lbs" {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

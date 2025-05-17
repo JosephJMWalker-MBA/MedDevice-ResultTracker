@@ -7,7 +7,7 @@ export interface BloodPressureReading {
   systolic: number;
   diastolic: number;
   age: number;
-  weight: number; // Assuming weight in kg or lbs, consistency is key
+  weight: number; // Weight in lbs
   medications: string; // Comma-separated list or description
 }
 
