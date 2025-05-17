@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { ChangeEvent } from 'react';
@@ -40,9 +41,14 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
   const form = useForm<ReadingFormData>({
     resolver: zodResolver(ReadingFormSchema),
     defaultValues: {
-      date: new Date().toISOString().split('T')[0], // Prefill with today's date
-      time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }), // Prefill with current time
+      date: new Date().toISOString().split('T')[0],
+      time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+      systolic: '', // Initialize as empty string
+      diastolic: '', // Initialize as empty string
+      age: '',       // Initialize as empty string
+      weight: '',     // Initialize as empty string
       medications: '',
+      // imageFile is implicitly undefined here, which is fine for file inputs.
     },
   });
 
@@ -56,6 +62,8 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
         const dataUri = await fileToDataUri(file);
         const extractedData: OcrData = await callExtractDataAction(dataUri);
         
+        // form.setValue will convert number to string for input type="number" if needed,
+        // or keep as number. The key is it's a defined value.
         if (extractedData.date) form.setValue('date', extractedData.date);
         if (extractedData.time) form.setValue('time', extractedData.time);
         if (extractedData.systolic) form.setValue('systolic', extractedData.systolic);
@@ -78,19 +86,17 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
   const onSubmit: SubmitHandler<ReadingFormData> = (data) => {
     onReadingAdded(data);
     form.reset({
-      // Keep prefilled date and time, reset others
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-      systolic: undefined,
-      diastolic: undefined,
-      age: data.age, // Keep age and weight if user might enter multiple readings in a session
-      weight: data.weight,
-      medications: '', // Clear medications
-      imageFile: undefined,
+      systolic: '', // Reset to empty string
+      diastolic: '', // Reset to empty string
+      age: data.age, // Keep previously submitted numeric age (data.age is number from Zod)
+      weight: data.weight, // Keep previously submitted numeric weight (data.weight is number from Zod)
+      medications: '', 
+      imageFile: undefined, // Reset file input
     });
     setImagePreview(null);
     setOcrStatus('idle');
-    // Manually clear the file input
     const fileInput = document.getElementById('imageFile') as HTMLInputElement | null;
     if (fileInput) {
         fileInput.value = '';
@@ -98,7 +104,8 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
     toast({ title: 'Reading Added', description: 'Your blood pressure reading has been saved.' });
   };
   
-  // Set default date and time if not already set by OCR or user
+  // This useEffect is mostly redundant now as defaultValues handles date/time.
+  // Keeping it in case of edge cases or if defaultValues were removed for date/time.
   useEffect(() => {
     if (!form.getValues('date')) {
       form.setValue('date', new Date().toISOString().split('T')[0]);
@@ -124,7 +131,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
             <FormField
               control={form.control}
               name="imageFile"
-              render={({ field }) => (
+              render={({ field }) => ( // field.value will be FileList or undefined
                 <FormItem>
                   <FormLabel htmlFor="imageFile" className="text-base">Upload Image (Optional)</FormLabel>
                   <FormControl>
@@ -133,7 +140,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
                       type="file" 
                       accept="image/*" 
                       onChange={(e) => {
-                        field.onChange(e.target.files); // RHF expects FileList
+                        field.onChange(e.target.files); 
                         handleImageChange(e);
                       }}
                       className="file:text-primary file:font-semibold hover:file:bg-primary/10"
@@ -156,7 +163,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="date"
-                render={({ field }) => (
+                render={({ field }) => ( // field.value is string
                   <FormItem>
                     <FormLabel className="text-base">Date</FormLabel>
                     <FormControl>
@@ -169,7 +176,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="time"
-                render={({ field }) => (
+                render={({ field }) => ( // field.value is string
                   <FormItem>
                     <FormLabel className="text-base">Time</FormLabel>
                     <FormControl>
@@ -185,11 +192,11 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="systolic"
-                render={({ field }) => (
+                render={({ field }) => ( // field.value is '' or number (or string representation of number)
                   <FormItem>
                     <FormLabel className="text-base">Systolic (SYS)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="e.g., 120" {...field} />
+                      <Input type="number" placeholder="e.g., 120" {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -198,11 +205,11 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="diastolic"
-                render={({ field }) => (
+                render={({ field }) => ( // field.value is '' or number
                   <FormItem>
                     <FormLabel className="text-base">Diastolic (DIA)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="e.g., 80" {...field} />
+                      <Input type="number" placeholder="e.g., 80" {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -214,11 +221,11 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="age"
-                render={({ field }) => (
+                render={({ field }) => ( // field.value is '' or number
                   <FormItem>
                     <FormLabel className="text-base">Age</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="Your current age" {...field} />
+                      <Input type="number" placeholder="Your current age" {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -227,11 +234,11 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="weight"
-                render={({ field }) => (
+                render={({ field }) => ( // field.value is '' or number
                   <FormItem>
-                    <FormLabel className="text-base">Weight (kg)</FormLabel> {/* Specify unit */}
+                    <FormLabel className="text-base">Weight (kg)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="Your current weight in kg" {...field} />
+                      <Input type="number" placeholder="Your current weight in kg" {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -242,11 +249,11 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
             <FormField
               control={form.control}
               name="medications"
-              render={({ field }) => (
+              render={({ field }) => ( // field.value is string
                 <FormItem>
                   <FormLabel className="text-base">Medications (Optional)</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="List any medications you are currently taking, e.g., Lisinopril 10mg" {...field} />
+                    <Textarea placeholder="List any medications you are currently taking, e.g., Lisinopril 10mg" {...field} value={field.value ?? ''} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -264,3 +271,4 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
     </Card>
   );
 }
+
