@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile } from '@/lib/types';
-import { BodyPositionOptions } from '@/lib/types'; // Import BodyPositionOptions
+import { BodyPositionOptions } from '@/lib/types';
 import { callAnalyzeTrendAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 
@@ -54,6 +54,7 @@ export default function HomePage() {
           bodyPosition: r.bodyPosition || BodyPositionOptions[0], 
           medications: r.medications || '', 
         })),
+        // Spread profile data if available
         ...(profile?.age && { age: profile.age }),
         ...(profile?.weightLbs && { weightLbs: profile.weightLbs }),
         ...(profile?.gender && { gender: profile.gender }),
@@ -74,46 +75,54 @@ export default function HomePage() {
   
   useEffect(() => {
     setIsInitialLoad(true);
-    try {
-      const storedReadingsRaw = localStorage.getItem('bpReadings');
-      let migratedReadings: BloodPressureReading[] = [];
+    let loadedReadings: BloodPressureReading[] = [];
+    let loadedProfile: UserProfile | null = null;
 
+    try {
+      // Load and migrate readings
+      const storedReadingsRaw = localStorage.getItem('bpReadings');
       if (storedReadingsRaw) {
         const parsedReadings: any[] = JSON.parse(storedReadingsRaw);
-        migratedReadings = parsedReadings.map((reading: any, index: number) => ({
-          id: reading.id || `${new Date(reading.timestamp || Date.now()).getTime()}-${index}`, // Ensure ID exists, fallback to timestamp-index
-          timestamp: reading.timestamp || new Date().toISOString(), // Ensure timestamp exists
-          systolic: typeof reading.systolic === 'number' ? reading.systolic : 0, // Ensure numeric, default 0
-          diastolic: typeof reading.diastolic === 'number' ? reading.diastolic : 0, // Ensure numeric, default 0
-          bodyPosition: BodyPositionOptions.includes(reading.bodyPosition) ? reading.bodyPosition : BodyPositionOptions[0], // Ensure valid or default
-          medications: typeof reading.medications === 'string' ? reading.medications : '', // Ensure string or default
-        })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Sort after migration
+        loadedReadings = parsedReadings.map((reading: any, index: number) => ({
+          id: reading.id || `${new Date(reading.timestamp || Date.now()).getTime()}-${index}`,
+          timestamp: reading.timestamp || new Date().toISOString(),
+          systolic: typeof reading.systolic === 'number' ? reading.systolic : 0,
+          diastolic: typeof reading.diastolic === 'number' ? reading.diastolic : 0,
+          bodyPosition: BodyPositionOptions.includes(reading.bodyPosition) ? reading.bodyPosition : BodyPositionOptions[0],
+          medications: typeof reading.medications === 'string' ? reading.medications : (Array.isArray(reading.medications) ? reading.medications.join(', ') : ''),
+        })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       }
-      setReadings(migratedReadings);
+      setReadings(loadedReadings);
 
-      const storedProfile = localStorage.getItem('bpUserProfile');
-      if (storedProfile) {
-        const loadedProfile: UserProfile | null = JSON.parse(storedProfile);
+      // Load user profile
+      const storedProfileRaw = localStorage.getItem('bpUserProfile');
+      if (storedProfileRaw) {
+        loadedProfile = JSON.parse(storedProfileRaw);
         setUserProfile(loadedProfile);
       }
     } catch (error) {
       console.error("Failed to load or migrate data from localStorage:", error);
       toast({ variant: 'destructive', title: 'Load Error', description: 'Could not load or migrate saved data.' });
     } finally {
-      setIsInitialLoad(false); 
+      setIsInitialLoad(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps 
   }, []); 
 
+
   useEffect(() => {
+    // Trigger analysis only after initial load and if readings/profile might have changed
     if (!isInitialLoad) { 
         triggerAnalysis(readings, userProfile);
     }
+  // Trigger this effect when readings, userProfile, or isInitialLoad changes.
+  // The triggerAnalysis function itself is memoized with useCallback.
   // eslint-disable-next-line react-hooks/exhaustive-deps  
   }, [readings, userProfile, isInitialLoad]);
 
 
   useEffect(() => {
+    // Save readings to localStorage whenever they change, but not during initial load
     if (!isInitialLoad && readings) { 
       try {
         localStorage.setItem('bpReadings', JSON.stringify(readings));
@@ -133,6 +142,7 @@ export default function HomePage() {
       bodyPosition: data.bodyPosition,
       medications: data.medications || '',
     };
+    // Add new reading and re-sort
     const updatedReadings = [...readings, newReading].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setReadings(updatedReadings);
   };
