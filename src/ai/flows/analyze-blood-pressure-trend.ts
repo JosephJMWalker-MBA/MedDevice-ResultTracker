@@ -20,19 +20,17 @@ const FlowReadingSchema = z.object({
   systolic: z.number().describe('Systolic blood pressure reading.'),
   diastolic: z.number().describe('Diastolic blood pressure reading.'),
   bodyPosition: z.enum(BodyPositionOptions).describe('Body position during the reading (e.g., Sitting, Standing).'),
-  // medications removed from individual reading schema
 });
 
 // Public input schema for the flow
 const AnalyzeBloodPressureTrendInputSchema = z.object({
   readings: z.array(FlowReadingSchema).describe('Array of blood pressure readings over the last 30 days.'),
-  // User profile data for more personalized analysis
   age: z.number().optional().describe('Age of the user.'),
   weightLbs: z.number().optional().describe('Weight of the user in lbs.'),
   gender: z.enum(GenderOptions).optional().describe('Gender of the user.'),
   raceEthnicity: z.enum(RaceEthnicityOptions).optional().describe('Race or ethnicity of the user.'),
   medicalConditions: z.array(z.string()).optional().describe('Existing medical conditions of the user (e.g., diabetes, kidney disease).'),
-  medications: z.string().optional().describe('Current medications the user is taking.'), // Added medications to profile input
+  medications: z.string().optional().describe('Current medications the user is taking.'),
 });
 export type AnalyzeBloodPressureTrendInput = z.infer<typeof AnalyzeBloodPressureTrendInputSchema>;
 
@@ -49,7 +47,7 @@ const AnalyzeBloodPressureTrendPromptInternalInputSchema = z.object({
   gender: z.enum(GenderOptions).optional().describe('Gender of the user.'),
   raceEthnicity: z.enum(RaceEthnicityOptions).optional().describe('Race or ethnicity of the user.'),
   medicalConditions: z.array(z.string()).optional().describe('Existing medical conditions of the user (e.g., diabetes, kidney disease).'),
-  medications: z.string().optional().describe('Current medications the user is taking.'), // Added medications here too
+  medications: z.string().optional().describe('Current medications the user is taking.'),
 });
 
 
@@ -69,10 +67,7 @@ const prompt = ai.definePrompt({
   input: {schema: AnalyzeBloodPressureTrendPromptInternalInputSchema}, 
   output: {schema: AnalyzeBloodPressureTrendOutputSchema},
   prompt: `You are HealthInsightBot, a friendly AI health assistant specializing in blood pressure analysis.
-  You will analyze blood pressure readings over the last 30 days.
-  Consider the body position for each reading (e.g., readings while standing might be different).
-  
-  Use the provided user profile data (age, weight, gender, race/ethnicity, medical conditions, medications) to personalize the analysis and suggestions further, adhering to current AHA/CDC guidelines.
+  You will analyze blood pressure readings over the last 30 days based on current AHA/CDC guidelines.
   
   Blood Pressure Readings:
   {{#each readings}}
@@ -88,15 +83,26 @@ const prompt = ai.definePrompt({
   {{#if medications}}User Medications: {{medications}}{{/if}}
 
   Analysis Requirements:
-  1. Summary: Provide a plain-language summary of what the averages and trends mean for the user. Incorporate profile data (including medications and body position) into this summary.
-  2. Flags: List any flags (e.g., "elevated," "stage 1 hypertension") based on current AHA/CDC guidelines.
-     - Normal: <120 SBP AND <80 DBP
-     - Elevated: 120–129 SBP AND <80 DBP
-     - Hypertension Stage 1: 130–139 SBP OR 80–89 DBP
-     - Hypertension Stage 2: ≥140 SBP OR ≥90 DBP
-     - Hypertensive Crisis: >180 SBP AND/OR >120 DBP (advise seeking immediate medical attention).
-     Account for how demographics, medical conditions, or medications (if provided) might put the user at higher risk or modify interpretation.
-  3. Suggestions: Offer personalized, actionable suggestions for lifestyle adjustments or monitoring, considering all provided data.
+
+  1. Summary: 
+     - Provide a plain-language summary of what the averages and trends mean for the user. 
+     - Incorporate how the user's profile data (age, weight, gender, race/ethnicity, medical conditions, medications) and the body position during readings might influence blood pressure patterns, according to general health knowledge and guidelines.
+     - For instance, note if readings are consistently different based on body position.
+     - Mention if certain demographics or conditions might put the user at a different baseline risk, without making specific diagnoses.
+
+  2. Flags: 
+     - List any flags based on the following AHA/CDC blood pressure categories. Apply these to individual readings or overall trends as appropriate.
+       - Normal: Systolic <120 mmHg AND Diastolic <80 mmHg.
+       - Elevated: Systolic 120–129 mmHg AND Diastolic <80 mmHg.
+       - Hypertension Stage 1: Systolic 130–139 mmHg OR Diastolic 80–89 mmHg.
+       - Hypertension Stage 2: Systolic ≥140 mmHg OR Diastolic ≥90 mmHg.
+       - Hypertensive Crisis: Systolic >180 mmHg AND/OR Diastolic >120 mmHg. (If flagged, strongly advise seeking immediate medical attention in suggestions).
+     - When determining flags, consider how demographics, existing medical conditions, or medications (if provided) might be relevant according to general guidelines. For example, treatment targets might differ, or certain conditions might increase risk.
+
+  3. Suggestions: 
+     - Offer personalized, actionable suggestions for lifestyle adjustments, monitoring, or discussions with a healthcare provider.
+     - These suggestions should be informed by the trends, any flags raised, the user's profile, body position during readings, and general AHA/CDC recommendations for blood pressure management.
+     - For example, if readings are higher when standing, a suggestion might be to discuss orthostatic hypotension with a doctor.
 
   IMPORTANT: The final "summary" field in your output MUST conclude with the exact sentence: "⚠️ This is not medical advice. Consult a healthcare professional for any concerns." Do not omit or alter this disclaimer.
   Format flags and suggestions as arrays of strings.
@@ -132,7 +138,7 @@ const analyzeBloodPressureTrendFlow = ai.defineFlow(
       gender: flowInput.gender,
       raceEthnicity: flowInput.raceEthnicity,
       medicalConditions: flowInput.medicalConditions,
-      medications: flowInput.medications, // Pass medications to prompt
+      medications: flowInput.medications,
     };
     
     const {output} = await prompt(promptInputPayload);
@@ -155,3 +161,4 @@ const analyzeBloodPressureTrendFlow = ai.defineFlow(
     };
   }
 );
+
