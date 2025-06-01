@@ -51,8 +51,8 @@ export default function HomePage() {
           timestamp: r.timestamp,
           systolic: r.systolic,
           diastolic: r.diastolic,
-          bodyPosition: r.bodyPosition || BodyPositionOptions[0], // Ensure default
-          medications: r.medications || '', // Ensure default
+          bodyPosition: r.bodyPosition || BodyPositionOptions[0], 
+          medications: r.medications || '', 
         })),
         ...(profile?.age && { age: profile.age }),
         ...(profile?.weightLbs && { weightLbs: profile.weightLbs }),
@@ -75,16 +75,19 @@ export default function HomePage() {
   useEffect(() => {
     setIsInitialLoad(true);
     try {
-      const storedReadings = localStorage.getItem('bpReadings');
+      const storedReadingsRaw = localStorage.getItem('bpReadings');
       let migratedReadings: BloodPressureReading[] = [];
-      if (storedReadings) {
-        const parsedReadings: any[] = JSON.parse(storedReadings); // Parse as any[] initially for migration
-        migratedReadings = parsedReadings.map(reading => ({
-          ...reading,
-          id: reading.id || Date.now().toString() + Math.random().toString(36).substring(2,9), // Ensure ID exists
-          bodyPosition: reading.bodyPosition || BodyPositionOptions[0], // Default if missing
-          medications: reading.medications || '', // Default if missing or null
-        }));
+
+      if (storedReadingsRaw) {
+        const parsedReadings: any[] = JSON.parse(storedReadingsRaw);
+        migratedReadings = parsedReadings.map((reading: any, index: number) => ({
+          id: reading.id || `${new Date(reading.timestamp || Date.now()).getTime()}-${index}`, // Ensure ID exists, fallback to timestamp-index
+          timestamp: reading.timestamp || new Date().toISOString(), // Ensure timestamp exists
+          systolic: typeof reading.systolic === 'number' ? reading.systolic : 0, // Ensure numeric, default 0
+          diastolic: typeof reading.diastolic === 'number' ? reading.diastolic : 0, // Ensure numeric, default 0
+          bodyPosition: BodyPositionOptions.includes(reading.bodyPosition) ? reading.bodyPosition : BodyPositionOptions[0], // Ensure valid or default
+          medications: typeof reading.medications === 'string' ? reading.medications : '', // Ensure string or default
+        })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Sort after migration
       }
       setReadings(migratedReadings);
 
@@ -94,16 +97,16 @@ export default function HomePage() {
         setUserProfile(loadedProfile);
       }
     } catch (error) {
-      console.error("Failed to load data from localStorage:", error);
-      toast({ variant: 'destructive', title: 'Load Error', description: 'Could not load saved data.' });
+      console.error("Failed to load or migrate data from localStorage:", error);
+      toast({ variant: 'destructive', title: 'Load Error', description: 'Could not load or migrate saved data.' });
     } finally {
-      setIsInitialLoad(false);
+      setIsInitialLoad(false); 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps 
   }, []); 
 
   useEffect(() => {
-    if (!isInitialLoad) { // Trigger analysis after initial load effects are done
+    if (!isInitialLoad) { 
         triggerAnalysis(readings, userProfile);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps  
