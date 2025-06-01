@@ -27,46 +27,61 @@ export default function ProfileForm() {
       weightLbs: null,
       raceEthnicity: null,
       gender: null,
-      medicalConditions: [],
+      medicalConditions: '', // Textarea expects a string; schema handles conversion
       medications: '',
       preferredReminderTime: null,
     },
   });
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotificationPermission(Notification.permission);
-    }
-    try {
-      const storedProfileRaw = localStorage.getItem('bpUserProfile');
-      if (storedProfileRaw) {
-        const storedProfile: UserProfile = JSON.parse(storedProfileRaw);
-        form.reset({
-          ...storedProfile,
-          medicalConditions: storedProfile.medicalConditions ? storedProfile.medicalConditions.join(', ') : '',
-          medications: storedProfile.medications || '',
-          preferredReminderTime: storedProfile.preferredReminderTime || null,
-        } as unknown as UserProfileFormData);
+    // This effect runs once on client mount to load data and set initial permissions
+    if (typeof window !== 'undefined') {
+      if ('Notification' in window) {
+        setNotificationPermission(Notification.permission);
       }
-    } catch (error) {
-      console.error("Failed to load user profile from localStorage:", error);
-      toast({ variant: 'destructive', title: 'Load Error', description: 'Could not load your profile.' });
+      try {
+        const storedProfileRaw = localStorage.getItem('bpUserProfile');
+        if (storedProfileRaw) {
+          const storedProfile: UserProfile = JSON.parse(storedProfileRaw);
+          if (form) {
+            form.reset({
+              age: storedProfile.age ?? null,
+              weightLbs: storedProfile.weightLbs ?? null,
+              raceEthnicity: storedProfile.raceEthnicity ?? null,
+              gender: storedProfile.gender ?? null,
+              medicalConditions: Array.isArray(storedProfile.medicalConditions) ? storedProfile.medicalConditions.join(', ') : (storedProfile.medicalConditions || ''),
+              medications: storedProfile.medications || '',
+              preferredReminderTime: storedProfile.preferredReminderTime || null,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load user profile from localStorage:", error);
+        if (toast) {
+          toast({ variant: 'destructive', title: 'Load Error', description: 'Could not load your profile.' });
+        }
+      }
     }
-  }, [form, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array ensures this runs only once on client mount
 
   const handleRequestPermission = async () => {
-    if (!('Notification' in window)) {
-      toast({ variant: 'destructive', title: 'Unsupported', description: 'Notifications are not supported by your browser.' });
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      if (toast) {
+        toast({ variant: 'destructive', title: 'Unsupported', description: 'Notifications are not supported by your browser.' });
+      }
       return;
     }
     const permission = await Notification.requestPermission();
     setNotificationPermission(permission);
-    if (permission === 'granted') {
-      toast({ title: 'Permissions Granted', description: 'You will now receive reminders.' });
-    } else if (permission === 'denied') {
-      toast({ variant: 'destructive', title: 'Permissions Denied', description: 'Notifications blocked. You can enable them in browser settings.' });
-    } else {
-      toast({ title: 'Permissions Undetermined', description: 'Notification permission not yet granted or denied.' });
+    if (toast) {
+      if (permission === 'granted') {
+        toast({ title: 'Permissions Granted', description: 'You will now receive reminders.' });
+      } else if (permission === 'denied') {
+        toast({ variant: 'destructive', title: 'Permissions Denied', description: 'Notifications blocked. You can enable them in browser settings.' });
+      } else {
+        toast({ title: 'Permissions Undetermined', description: 'Notification permission not yet granted or denied.' });
+      }
     }
   };
 
@@ -75,11 +90,13 @@ export default function ProfileForm() {
       clearTimeout(reminderTimeoutIdRef.current);
       reminderTimeoutIdRef.current = null;
     }
+    
+    if (typeof window === 'undefined') return; // Ensure window context for new Date() and Notification
 
-    const currentReminderTime = form.getValues('preferredReminderTime');
+    const preferredReminderTimeValue = form.getValues('preferredReminderTime');
 
-    if (notificationPermission === 'granted' && currentReminderTime) {
-      const [hours, minutes] = currentReminderTime.split(':').map(Number);
+    if (notificationPermission === 'granted' && preferredReminderTimeValue) {
+      const [hours, minutes] = preferredReminderTimeValue.split(':').map(Number);
       const now = new Date();
       let reminderDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
 
@@ -92,22 +109,22 @@ export default function ProfileForm() {
       if (delay > 0) {
         const newTimeoutId = setTimeout(() => {
           try {
-            new Notification('PressureTrack AI Reminder', {
-              body: 'Time to take your blood pressure reading!',
-              // icon: '/icon.png', // Optional: ensure you have an icon at public/icon.png
-            });
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification('PressureTrack AI Reminder', {
+                body: 'Time to take your blood pressure reading!',
+                // icon: '/icon.png', 
+              });
+            }
           } catch (e) {
             console.error("Error showing notification:", e)
           }
-          // Reschedule for the next occurrence (which will be the next day if logic is sound)
-          scheduleReminder();
+          scheduleReminder(); // Reschedule for the next occurrence
         }, delay);
         reminderTimeoutIdRef.current = newTimeoutId;
       }
     }
-  }, [notificationPermission, form.getValues('preferredReminderTime')]); // Using getValues to ensure latest form value
+  }, [notificationPermission, form]); // form is stable, getValues is used
 
-  // Effect to schedule/reschedule when permission or time changes
   useEffect(() => {
     scheduleReminder();
     return () => {
@@ -115,26 +132,45 @@ export default function ProfileForm() {
         clearTimeout(reminderTimeoutIdRef.current);
       }
     };
-  }, [scheduleReminder, form.watch('preferredReminderTime')]); // form.watch makes preferredReminderTime a dependency for re-running scheduleReminder
+  }, [scheduleReminder, form.watch('preferredReminderTime')]);
 
 
   const onSubmit: SubmitHandler<UserProfileFormData> = (data) => {
     try {
+      const medicalConditionsArray = typeof data.medicalConditions === 'string' 
+        ? data.medicalConditions.split(',').map(s => s.trim()).filter(Boolean) 
+        : (Array.isArray(data.medicalConditions) ? data.medicalConditions : []);
+
       const profileToSave: UserProfile = {
-        ...data,
-        medicalConditions: Array.isArray(data.medicalConditions) ? data.medicalConditions : (typeof data.medicalConditions === 'string' ? data.medicalConditions.split(',').map(s => s.trim()).filter(Boolean) : []),
+        age: data.age,
+        weightLbs: data.weightLbs,
+        raceEthnicity: data.raceEthnicity,
+        gender: data.gender,
+        medicalConditions: medicalConditionsArray,
         medications: data.medications || null,
         preferredReminderTime: data.preferredReminderTime || null,
       };
-      localStorage.setItem('bpUserProfile', JSON.stringify(profileToSave));
-      toast({ title: 'Profile Saved', description: 'Your profile information has been updated.' });
-      // After saving, re-evaluate scheduling
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bpUserProfile', JSON.stringify(profileToSave));
+      }
+      if (toast) {
+        toast({ title: 'Profile Saved', description: 'Your profile information has been updated.' });
+      }
       scheduleReminder();
     } catch (error) {
       console.error("Failed to save user profile to localStorage:", error);
-      toast({ variant: 'destructive', title: 'Save Error', description: 'Could not save your profile.' });
+      if (toast) {
+        toast({ variant: 'destructive', title: 'Save Error', description: 'Could not save your profile.' });
+      }
     }
   };
+  
+  // Convert array from UserProfile to string for Textarea, and handle null/undefined
+  const medicalConditionsValue = form.watch('medicalConditions');
+  const medicalConditionsForTextarea = Array.isArray(medicalConditionsValue) 
+    ? medicalConditionsValue.join(', ') 
+    : (typeof medicalConditionsValue === 'string' ? medicalConditionsValue : '');
+
 
   return (
     <Card className="shadow-lg max-w-2xl mx-auto">
@@ -158,7 +194,7 @@ export default function ProfileForm() {
                   <FormItem>
                     <FormLabel>Age</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="Your age" {...field} value={field.value ?? ''} />
+                      <Input type="number" placeholder="Your age" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -171,7 +207,7 @@ export default function ProfileForm() {
                   <FormItem>
                     <FormLabel>Weight (lbs)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="Your weight in lbs" {...field} value={field.value ?? ''} />
+                      <Input type="number" placeholder="Your weight in lbs" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -236,8 +272,8 @@ export default function ProfileForm() {
                     <Textarea
                       placeholder="List any existing medical conditions, separated by commas (e.g., Diabetes, Asthma)"
                       {...field}
-                      value={Array.isArray(field.value) ? field.value.join(', ') : (field.value || '')}
-                      onChange={e => field.onChange(e.target.value)}
+                      value={medicalConditionsForTextarea} // Use the derived string value
+                      onChange={e => field.onChange(e.target.value)} // Store string in form state
                     />
                   </FormControl>
                   <FormDescription>Separate multiple conditions with a comma.</FormDescription>
@@ -272,7 +308,7 @@ export default function ProfileForm() {
                 <FormItem>
                   <FormLabel>Preferred Reminder Time</FormLabel>
                   <FormControl>
-                    <Input type="time" {...field} value={field.value ?? ''} />
+                    <Input type="time" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value || null)} />
                   </FormControl>
                   <FormDescription>Set a time you'd like to be reminded to take your reading. Notifications work best if this page is kept open.</FormDescription>
                   <FormMessage />
@@ -280,7 +316,7 @@ export default function ProfileForm() {
               )}
             />
 
-            {'Notification' in window && (
+            {typeof window !== 'undefined' && 'Notification' in window && (
               <FormItem>
                 <FormLabel>Notification Settings</FormLabel>
                 {notificationPermission === 'granted' && (
@@ -332,3 +368,4 @@ export default function ProfileForm() {
     </Card>
   );
 }
+
