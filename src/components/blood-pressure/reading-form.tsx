@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 // import { Label } from '@/components/ui/label'; // Label is part of FormLabel
-import { Textarea } from '@/components/ui/textarea';
+// import { Textarea } from '@/components/ui/textarea'; // Medications textarea removed
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -49,7 +49,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
       systolic: '', 
       diastolic: '',
       bodyPosition: BodyPositionOptions[0], // Default to "Sitting"
-      medications: '',
+      // medications field removed
       imageFile: undefined,
     },
   });
@@ -62,7 +62,6 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
       setOcrProcessingStatus('idle');
       let exifDateApplied = false;
 
-      // Attempt to read EXIF data
       try {
         const tags = await ExifReader.load(file);
         const dateTimeOriginal = tags['DateTimeOriginal']?.description;
@@ -82,17 +81,15 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
         console.warn("Could not read EXIF data:", exifError);
       }
 
-      // Proceed with OCR
       try {
         const dataUri = await fileToDataUri(file);
         const extractedData: OcrData = await callExtractDataAction(dataUri);
         
-        // Only set OCR date/time if EXIF didn't provide it
         if (extractedData.date && !form.getValues('date')) form.setValue('date', extractedData.date);
         if (extractedData.time && !form.getValues('time')) form.setValue('time', extractedData.time);
         
-        if (extractedData.systolic) form.setValue('systolic', extractedData.systolic);
-        if (extractedData.diastolic) form.setValue('diastolic', extractedData.diastolic);
+        if (extractedData.systolic) form.setValue('systolic', extractedData.systolic as any); // Ensure string for form if needed
+        if (extractedData.diastolic) form.setValue('diastolic', extractedData.diastolic as any); // Ensure string for form if needed
         
         if (extractedData.systolic || extractedData.diastolic) {
             toast({ title: 'OCR Success', description: 'Systolic/Diastolic data extracted. Please verify.' });
@@ -118,19 +115,18 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
       systolic: '', 
       diastolic: '',
       bodyPosition: BodyPositionOptions[0],
-      medications: '', 
+      // medications field removed
       imageFile: undefined, 
     });
     setImagePreview(null);
     setOcrProcessingStatus('idle');
     const fileInput = document.getElementById('imageFile') as HTMLInputElement | null;
     if (fileInput) {
-        fileInput.value = ''; // Clears the file input
+        fileInput.value = ''; 
     }
     toast({ title: 'Reading Added', description: 'Your blood pressure reading has been saved.' });
   };
   
-  // Set default date/time if not already set (e.g. by EXIF or user)
   useEffect(() => {
     if (!form.getValues('date')) {
       form.setValue('date', new Date().toISOString().split('T')[0]);
@@ -267,19 +263,8 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="medications"
-              render={({ field }) => ( 
-                <FormItem>
-                  <FormLabel className="text-base">Medications (Optional)</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="List any medications you are currently taking, e.g., Lisinopril 10mg" {...field} value={field.value ?? ''} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Medications FormField removed from here */}
+
           </CardContent>
           <CardFooter>
             <Button type="submit" className="w-full md:w-auto" disabled={isLoadingOcrParent || form.formState.isSubmitting}>

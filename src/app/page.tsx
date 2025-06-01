@@ -52,14 +52,14 @@ export default function HomePage() {
           systolic: r.systolic,
           diastolic: r.diastolic,
           bodyPosition: r.bodyPosition || BodyPositionOptions[0], 
-          medications: r.medications || '', 
+          // medications removed from per-reading, will come from profile
         })),
-        // Spread profile data if available
         ...(profile?.age && { age: profile.age }),
         ...(profile?.weightLbs && { weightLbs: profile.weightLbs }),
         ...(profile?.gender && { gender: profile.gender }),
         ...(profile?.raceEthnicity && { raceEthnicity: profile.raceEthnicity }),
         ...(profile?.medicalConditions && profile.medicalConditions.length > 0 && { medicalConditions: profile.medicalConditions }),
+        ...(profile?.medications && { medications: profile.medications }), // Pass medications from profile
       };
       
       const result = await callAnalyzeTrendAction(analysisPayload);
@@ -79,7 +79,6 @@ export default function HomePage() {
     let loadedProfile: UserProfile | null = null;
 
     try {
-      // Load and migrate readings
       const storedReadingsRaw = localStorage.getItem('bpReadings');
       if (storedReadingsRaw) {
         const parsedReadings: any[] = JSON.parse(storedReadingsRaw);
@@ -89,12 +88,11 @@ export default function HomePage() {
           systolic: typeof reading.systolic === 'number' ? reading.systolic : 0,
           diastolic: typeof reading.diastolic === 'number' ? reading.diastolic : 0,
           bodyPosition: BodyPositionOptions.includes(reading.bodyPosition) ? reading.bodyPosition : BodyPositionOptions[0],
-          medications: typeof reading.medications === 'string' ? reading.medications : (Array.isArray(reading.medications) ? reading.medications.join(', ') : ''),
+          // medications: typeof reading.medications === 'string' ? reading.medications : (Array.isArray(reading.medications) ? reading.medications.join(', ') : ''), // Old medications field ignored
         })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       }
       setReadings(loadedReadings);
 
-      // Load user profile
       const storedProfileRaw = localStorage.getItem('bpUserProfile');
       if (storedProfileRaw) {
         loadedProfile = JSON.parse(storedProfileRaw);
@@ -111,18 +109,14 @@ export default function HomePage() {
 
 
   useEffect(() => {
-    // Trigger analysis only after initial load and if readings/profile might have changed
     if (!isInitialLoad) { 
         triggerAnalysis(readings, userProfile);
     }
-  // Trigger this effect when readings, userProfile, or isInitialLoad changes.
-  // The triggerAnalysis function itself is memoized with useCallback.
   // eslint-disable-next-line react-hooks/exhaustive-deps  
   }, [readings, userProfile, isInitialLoad]);
 
 
   useEffect(() => {
-    // Save readings to localStorage whenever they change, but not during initial load
     if (!isInitialLoad && readings) { 
       try {
         localStorage.setItem('bpReadings', JSON.stringify(readings));
@@ -140,9 +134,8 @@ export default function HomePage() {
       systolic: data.systolic,
       diastolic: data.diastolic,
       bodyPosition: data.bodyPosition,
-      medications: data.medications || '',
+      // medications: data.medications || '', // Medications removed from here
     };
-    // Add new reading and re-sort
     const updatedReadings = [...readings, newReading].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setReadings(updatedReadings);
   };

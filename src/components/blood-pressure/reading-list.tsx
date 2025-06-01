@@ -3,7 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCap
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { type BloodPressureReading, type BodyPosition } from '@/lib/types';
-import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, Pill, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2 } from 'lucide-react';
+import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2 } from 'lucide-react'; // Pill icon removed
 import { format } from 'date-fns';
 import Papa from 'papaparse';
 import jsPDF from 'jspdf';
@@ -50,7 +50,7 @@ export default function ReadingList({ readings }: ReadingListProps) {
       Systolic: r.systolic,
       Diastolic: r.diastolic,
       'Body Position': r.bodyPosition,
-      Medications: r.medications,
+      // Medications column removed
     }));
     const csv = Papa.unparse(dataToExport);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -71,7 +71,7 @@ export default function ReadingList({ readings }: ReadingListProps) {
       return;
     }
     const doc = new jsPDF();
-    const tableColumn = ["Date", "Time", "Systolic (mmHg)", "Diastolic (mmHg)", "Body Position", "Medications"];
+    const tableColumn = ["Date", "Time", "Systolic (mmHg)", "Diastolic (mmHg)", "Body Position"]; // Medications column removed
     const tableRows: any[][] = [];
 
     readings.forEach(reading => {
@@ -81,7 +81,7 @@ export default function ReadingList({ readings }: ReadingListProps) {
         reading.systolic,
         reading.diastolic,
         reading.bodyPosition,
-        reading.medications || '-',
+        // reading.medications || '-', // Medications data removed
       ];
       tableRows.push(readingData);
     });
@@ -106,7 +106,7 @@ export default function ReadingList({ readings }: ReadingListProps) {
     }
     const subject = "My Blood Pressure Readings from PressureTrack AI";
     let body = "Here are my recent blood pressure readings:\n\n";
-    const recentReadings = readings.slice(0, 10); // Share up to 10 recent readings
+    const recentReadings = readings.slice(0, 10); 
     recentReadings.forEach(r => {
         body += `${format(new Date(r.timestamp), 'yyyy-MM-dd HH:mm')} - SYS: ${r.systolic}, DIA: ${r.diastolic}, Position: ${r.bodyPosition}\n`;
     });
@@ -152,7 +152,7 @@ export default function ReadingList({ readings }: ReadingListProps) {
               <TableHead>Diastolic (mmHg)</TableHead>
               <TableHead>Category</TableHead>
               <TableHead className="hidden sm:table-cell">Position</TableHead>
-              <TableHead className="hidden lg:table-cell">Medications</TableHead>
+              {/* Medications TableHead removed */}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -176,16 +176,7 @@ export default function ReadingList({ readings }: ReadingListProps) {
                         <span>{reading.bodyPosition}</span>
                       </div>
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    {reading.medications ? (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground" title={reading.medications}>
-                        <Pill className="h-3 w-3 shrink-0"/> 
-                        <span className="truncate max-w-[100px]">{reading.medications}</span>
-                      </div>
-                    ) : (
-                      '-'
-                    )}
-                  </TableCell>
+                  {/* Medications TableCell removed */}
                 </TableRow>
               );
             })}

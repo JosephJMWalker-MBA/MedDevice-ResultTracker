@@ -12,7 +12,7 @@ export interface BloodPressureReading {
   systolic: number;
   diastolic: number;
   bodyPosition: BodyPosition;
-  medications: string;
+  // medications field removed from individual reading
 }
 
 export type OcrData = ExtractBloodPressureDataOutput;
@@ -36,7 +36,7 @@ export const ReadingFormSchema = z.object({
   systolic: z.coerce.number({invalid_type_error: "Systolic must be a number"}).positive("Systolic pressure must be positive"),
   diastolic: z.coerce.number({invalid_type_error: "Diastolic must be a number"}).positive("Diastolic pressure must be positive"),
   bodyPosition: z.enum(BodyPositionOptions, { required_error: "Body position is required." }),
-  medications: z.string().optional(),
+  // medications field removed from reading form schema
 });
 
 export type ReadingFormData = z.infer<typeof ReadingFormSchema>;
@@ -70,6 +70,7 @@ export interface UserProfile {
   raceEthnicity?: RaceEthnicity | null;
   gender?: Gender | null;
   medicalConditions?: string[];
+  medications?: string | null; // Added medications to user profile
   preferredReminderTime?: string | null;
 }
 
@@ -82,6 +83,7 @@ export const UserProfileSchema = z.object({
     .transform(value => value ? value.split(',').map(item => item.trim()).filter(item => item.length > 0) : [])
     .optional()
     .nullable(),
+  medications: z.string().optional().nullable(), // Added medications to profile schema
   preferredReminderTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format. Use HH:MM.")
     .optional()
     .nullable(),

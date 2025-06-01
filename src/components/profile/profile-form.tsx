@@ -25,6 +25,7 @@ export default function ProfileForm() {
       raceEthnicity: null,
       gender: null,
       medicalConditions: [],
+      medications: '', // Added medications default
       preferredReminderTime: null,
     },
   });
@@ -36,9 +37,9 @@ export default function ProfileForm() {
         const storedProfile: UserProfile = JSON.parse(storedProfileRaw);
         form.reset({
           ...storedProfile,
-          // Ensure medicalConditions is a string for the textarea
           medicalConditions: storedProfile.medicalConditions ? storedProfile.medicalConditions.join(', ') : '', 
-        } as unknown as UserProfileFormData); // Type assertion might be needed due to transform
+          medications: storedProfile.medications || '', // Load medications
+        } as unknown as UserProfileFormData); 
       }
     } catch (error) {
         console.error("Failed to load user profile from localStorage:", error);
@@ -48,10 +49,10 @@ export default function ProfileForm() {
 
   const onSubmit: SubmitHandler<UserProfileFormData> = (data) => {
     try {
-      // The medicalConditions field from form data is already an array of strings due to Zod transform
       const profileToSave: UserProfile = {
         ...data,
          medicalConditions: Array.isArray(data.medicalConditions) ? data.medicalConditions : (typeof data.medicalConditions === 'string' ? data.medicalConditions.split(',').map(s => s.trim()).filter(Boolean) : []),
+         medications: data.medications || null, // Save medications
       };
       localStorage.setItem('bpUserProfile', JSON.stringify(profileToSave));
       toast({ title: 'Profile Saved', description: 'Your profile information has been updated.' });
@@ -161,12 +162,30 @@ export default function ProfileForm() {
                     <Textarea 
                         placeholder="List any existing medical conditions, separated by commas (e.g., Diabetes, Asthma)" 
                         {...field}
-                        // Zod transform handles array to string for display and string to array for submission
                         value={Array.isArray(field.value) ? field.value.join(', ') : (field.value || '')}
-                        onChange={e => field.onChange(e.target.value)} // Pass string to Zod for transform
+                        onChange={e => field.onChange(e.target.value)} 
                     />
                   </FormControl>
                   <FormDescription>Separate multiple conditions with a comma.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="medications"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Current Medications</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                        placeholder="List any current medications, separated by commas (e.g., Lisinopril 10mg, Metformin 500mg)" 
+                        {...field}
+                        value={field.value ?? ''}
+                    />
+                  </FormControl>
+                  <FormDescription>Separate multiple medications with a comma.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

@@ -14,8 +14,8 @@ export async function callExtractDataAction(photoDataUri: string): Promise<Extra
     return {
       date: result.date || "",
       time: result.time || "",
-      systolic: result.systolic || 0, // Default to 0 if not found by OCR
-      diastolic: result.diastolic || 0, // Default to 0 if not found by OCR
+      systolic: result.systolic || 0, 
+      diastolic: result.diastolic || 0, 
     };
   } catch (error) {
     console.error("Error in callExtractDataAction:", error);
@@ -23,7 +23,6 @@ export async function callExtractDataAction(photoDataUri: string): Promise<Extra
   }
 }
 
-// The input type for this action now directly matches AnalyzeBloodPressureTrendInput
 export async function callAnalyzeTrendAction(input: AnalyzeBloodPressureTrendInput): Promise<AnalyzeBloodPressureTrendOutput> {
   if (!input.readings || input.readings.length === 0) {
     return {
@@ -32,12 +31,12 @@ export async function callAnalyzeTrendAction(input: AnalyzeBloodPressureTrendInp
         suggestions: ["Please add more readings to get a trend analysis."]
     };
   }
-  // The input is already in the correct shape for the analyzeBloodPressureTrend flow
   try {
+    // The input should now correctly contain profile.medications if available,
+    // and individual readings will not have a medications field.
     return await analyzeBloodPressureTrend(input);
   } catch (error) {
     console.error("Error in callAnalyzeTrendAction:", error);
-    // Ensure even errors return the disclaimer if possible, or a generic error message with it.
     const errorMessage = error instanceof Error ? error.message : "Failed to analyze blood pressure trend. The AI model encountered an issue.";
     throw new Error(`${errorMessage}\n\n⚠️ This is not medical advice. Consult a healthcare professional for any concerns.`);
   }
