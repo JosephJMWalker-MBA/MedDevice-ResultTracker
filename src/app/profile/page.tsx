@@ -1,4 +1,6 @@
 
+'use client';
+
 import ProfileForm from '@/components/profile/profile-form';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
