@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile } from '@/lib/types';
+import { BodyPositionOptions } from '@/lib/types'; // Import BodyPositionOptions
 import { callAnalyzeTrendAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 
@@ -18,7 +19,7 @@ import type { AnalyzeBloodPressureTrendInput } from '@/ai/flows/analyze-blood-pr
 
 export default function HomePage() {
   const [readings, setReadings] = useState<BloodPressureReading[]>([]);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null); // State for user profile
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [analysis, setAnalysis] = useState<TrendAnalysisResult | null>(null);
   const [isLoadingOcr, setIsLoadingOcr] = useState(false);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
@@ -50,10 +51,9 @@ export default function HomePage() {
           timestamp: r.timestamp,
           systolic: r.systolic,
           diastolic: r.diastolic,
-          bodyPosition: r.bodyPosition, // Now included
-          medications: r.medications,
+          bodyPosition: r.bodyPosition || BodyPositionOptions[0], // Ensure default
+          medications: r.medications || '', // Ensure default
         })),
-        // Conditionally add profile data if available
         ...(profile?.age && { age: profile.age }),
         ...(profile?.weightLbs && { weightLbs: profile.weightLbs }),
         ...(profile?.gender && { gender: profile.gender }),
@@ -76,24 +76,23 @@ export default function HomePage() {
     setIsInitialLoad(true);
     try {
       const storedReadings = localStorage.getItem('bpReadings');
+      let migratedReadings: BloodPressureReading[] = [];
       if (storedReadings) {
-        const parsedReadings: BloodPressureReading[] = JSON.parse(storedReadings);
-        setReadings(parsedReadings);
+        const parsedReadings: any[] = JSON.parse(storedReadings); // Parse as any[] initially for migration
+        migratedReadings = parsedReadings.map(reading => ({
+          ...reading,
+          id: reading.id || Date.now().toString() + Math.random().toString(36).substring(2,9), // Ensure ID exists
+          bodyPosition: reading.bodyPosition || BodyPositionOptions[0], // Default if missing
+          medications: reading.medications || '', // Default if missing or null
+        }));
       }
-      // Load user profile from localStorage (will be implemented in profile feature)
+      setReadings(migratedReadings);
+
       const storedProfile = localStorage.getItem('bpUserProfile');
-      let loadedProfile: UserProfile | null = null;
       if (storedProfile) {
-        loadedProfile = JSON.parse(storedProfile);
+        const loadedProfile: UserProfile | null = JSON.parse(storedProfile);
         setUserProfile(loadedProfile);
       }
-
-      // Trigger analysis if readings exist, using potentially loaded profile
-      const currentReadings = storedReadings ? JSON.parse(storedReadings) : [];
-      if (currentReadings.length > 0) {
-         triggerAnalysis(currentReadings, loadedProfile);
-      }
-
     } catch (error) {
       console.error("Failed to load data from localStorage:", error);
       toast({ variant: 'destructive', title: 'Load Error', description: 'Could not load saved data.' });
@@ -101,17 +100,16 @@ export default function HomePage() {
       setIsInitialLoad(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps 
-  }, []); // Only run on initial mount, triggerAnalysis will be called by other effects/handlers
+  }, []); 
 
   useEffect(() => {
-    if (!isInitialLoad && readings.length > 0) {
+    if (!isInitialLoad) { // Trigger analysis after initial load effects are done
         triggerAnalysis(readings, userProfile);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps  
-  }, [readings, userProfile]); // Re-analyze if readings or profile change (after initial load)
+  }, [readings, userProfile, isInitialLoad]);
 
 
-  // Save readings to localStorage whenever they change
   useEffect(() => {
     if (!isInitialLoad && readings) { 
       try {
@@ -129,12 +127,11 @@ export default function HomePage() {
       timestamp: new Date(`${data.date}T${data.time}`).toISOString(),
       systolic: data.systolic,
       diastolic: data.diastolic,
-      bodyPosition: data.bodyPosition, // New field
+      bodyPosition: data.bodyPosition,
       medications: data.medications || '',
     };
     const updatedReadings = [...readings, newReading].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setReadings(updatedReadings);
-    // triggerAnalysis is now handled by the useEffect watching `readings`
   };
 
   return (
