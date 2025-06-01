@@ -14,7 +14,8 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import { BodyPositionOptions, RaceEthnicityOptions, GenderOptions } from '@/lib/types'; 
 
-const ReadingSchema = z.object({
+// Schema for a single reading as received by the flow
+const FlowReadingSchema = z.object({
   timestamp: z.string().describe('Timestamp of the reading (ISO format).'),
   systolic: z.number().describe('Systolic blood pressure reading.'),
   diastolic: z.number().describe('Diastolic blood pressure reading.'),
@@ -22,8 +23,9 @@ const ReadingSchema = z.object({
   medications: z.string().optional().describe('Medications the user is taking when reading was taken.'),
 });
 
+// Public input schema for the flow
 const AnalyzeBloodPressureTrendInputSchema = z.object({
-  readings: z.array(ReadingSchema).describe('Array of blood pressure readings over the last 30 days.'),
+  readings: z.array(FlowReadingSchema).describe('Array of blood pressure readings over the last 30 days.'),
   // User profile data for more personalized analysis
   age: z.number().optional().describe('Age of the user.'),
   weightLbs: z.number().optional().describe('Weight of the user in lbs.'),
@@ -32,6 +34,22 @@ const AnalyzeBloodPressureTrendInputSchema = z.object({
   medicalConditions: z.array(z.string()).optional().describe('Existing medical conditions of the user (e.g., diabetes, kidney disease).'),
 });
 export type AnalyzeBloodPressureTrendInput = z.infer<typeof AnalyzeBloodPressureTrendInputSchema>;
+
+// Schema for a single reading as expected by the prompt (with formatted timestamp)
+const PromptReadingSchema = FlowReadingSchema.extend({
+  formattedTimestamp: z.string().describe('Pre-formatted timestamp for display (e.g., "May 17, 2024 19:10").')
+});
+
+// Internal input schema for the prompt itself
+const AnalyzeBloodPressureTrendPromptInternalInputSchema = z.object({
+  readings: z.array(PromptReadingSchema).describe('Array of blood pressure readings with formatted timestamps.'),
+  age: z.number().optional().describe('Age of the user.'),
+  weightLbs: z.number().optional().describe('Weight of the user in lbs.'),
+  gender: z.enum(GenderOptions).optional().describe('Gender of the user.'),
+  raceEthnicity: z.enum(RaceEthnicityOptions).optional().describe('Race or ethnicity of the user.'),
+  medicalConditions: z.array(z.string()).optional().describe('Existing medical conditions of the user (e.g., diabetes, kidney disease).'),
+});
+
 
 const AnalyzeBloodPressureTrendOutputSchema = z.object({
   summary: z.string().describe('A plain-language summary of the blood pressure trends. This summary MUST include the disclaimer: "⚠️ This is not medical advice. Consult a healthcare professional for any concerns."'),
@@ -46,7 +64,7 @@ export async function analyzeBloodPressureTrend(input: AnalyzeBloodPressureTrend
 
 const prompt = ai.definePrompt({
   name: 'analyzeBloodPressureTrendPrompt',
-  input: {schema: AnalyzeBloodPressureTrendInputSchema},
+  input: {schema: AnalyzeBloodPressureTrendPromptInternalInputSchema}, // Use the internal schema with formatted dates
   output: {schema: AnalyzeBloodPressureTrendOutputSchema},
   prompt: `You are HealthInsightBot, a friendly AI health assistant specializing in blood pressure analysis.
   You will analyze blood pressure readings over the last 30 days.
@@ -56,7 +74,7 @@ const prompt = ai.definePrompt({
   
   Blood Pressure Readings:
   {{#each readings}}
-  - Date: {{dateFormat timestamp format="MMM dd, yyyy HH:mm"}}, Systolic: {{systolic}}, Diastolic: {{diastolic}}, Position: {{bodyPosition}}{{#if medications}}, Medications: {{medications}}{{/if}}
+  - Date: {{formattedTimestamp}}, Systolic: {{systolic}}, Diastolic: {{diastolic}}, Position: {{bodyPosition}}{{#if medications}}, Medications: {{medications}}{{/if}}
   {{/each}}
 
   User Profile (if available):
@@ -80,36 +98,44 @@ const prompt = ai.definePrompt({
   IMPORTANT: The final "summary" field in your output MUST conclude with the exact sentence: "⚠️ This is not medical advice. Consult a healthcare professional for any concerns." Do not omit or alter this disclaimer.
   Format flags and suggestions as arrays of strings.
   `,
-  
-  // Register a Handlebars helper for date formatting
-  handlebars: {
-    helpers: {
-      dateFormat: (timestamp: string, {hash}: {hash: {format?: string}}) => {
-        try {
-          const date = new Date(timestamp);
-          if (hash.format) {
-            // Basic formatting, for more complex use date-fns directly in JS if needed
-            if (hash.format === "MMM dd, yyyy HH:mm") {
-              return `${date.toLocaleString('default', { month: 'short' })} ${date.getDate()}, ${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-            }
-          }
-          return date.toLocaleDateString(); // Default format
-        } catch (e) {
-          return timestamp; // Fallback
-        }
-      }
-    }
-  }
+  // Removed Handlebars helper registration as it's not being picked up
 });
 
 const analyzeBloodPressureTrendFlow = ai.defineFlow(
   {
     name: 'analyzeBloodPressureTrendFlow',
-    inputSchema: AnalyzeBloodPressureTrendInputSchema,
+    inputSchema: AnalyzeBloodPressureTrendInputSchema, // Public input schema for the flow
     outputSchema: AnalyzeBloodPressureTrendOutputSchema,
   },
-  async input => {
-    const {output} = await prompt(input);
+  async (flowInput: AnalyzeBloodPressureTrendInput) => { // Explicitly type flowInput
+    // Pre-process readings to add formatted timestamps
+    const processedReadings = flowInput.readings.map(reading => {
+      let formattedTimestamp: string;
+      try {
+        const date = new Date(reading.timestamp);
+        // Format: MMM dd, yyyy HH:mm (e.g., May 17, 2024 19:10)
+        formattedTimestamp = `${date.toLocaleString('default', { month: 'short' })} ${date.getDate()}, ${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+      } catch (e) {
+        console.warn(`Failed to format timestamp ${reading.timestamp}:`, e);
+        formattedTimestamp = reading.timestamp; // Fallback to original timestamp string
+      }
+      return {
+        ...reading,
+        formattedTimestamp: formattedTimestamp,
+      };
+    });
+
+    // Construct the payload for the prompt, matching AnalyzeBloodPressureTrendPromptInternalInputSchema
+    const promptInputPayload: z.infer<typeof AnalyzeBloodPressureTrendPromptInternalInputSchema> = {
+      readings: processedReadings,
+      age: flowInput.age,
+      weightLbs: flowInput.weightLbs,
+      gender: flowInput.gender,
+      raceEthnicity: flowInput.raceEthnicity,
+      medicalConditions: flowInput.medicalConditions,
+    };
+    
+    const {output} = await prompt(promptInputPayload);
     
     let summary = output!.summary;
     const disclaimer = "⚠️ This is not medical advice. Consult a healthcare professional for any concerns.";
@@ -130,3 +156,4 @@ const analyzeBloodPressureTrendFlow = ai.defineFlow(
     };
   }
 );
+
