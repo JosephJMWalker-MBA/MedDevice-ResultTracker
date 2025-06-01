@@ -1,3 +1,4 @@
+
 'use server';
 
 import { extractBloodPressureData, type ExtractBloodPressureDataInput, type ExtractBloodPressureDataOutput } from '@/ai/flows/extract-blood-pressure-data';
@@ -10,12 +11,11 @@ export async function callExtractDataAction(photoDataUri: string): Promise<Extra
   const input: ExtractBloodPressureDataInput = { photoDataUri };
   try {
     const result = await extractBloodPressureData(input);
-    // Ensure all fields are present, even if empty strings, to match schema
     return {
       date: result.date || "",
       time: result.time || "",
-      systolic: result.systolic || 0,
-      diastolic: result.diastolic || 0,
+      systolic: result.systolic || 0, // Default to 0 if not found by OCR
+      diastolic: result.diastolic || 0, // Default to 0 if not found by OCR
     };
   } catch (error) {
     console.error("Error in callExtractDataAction:", error);
@@ -23,21 +23,22 @@ export async function callExtractDataAction(photoDataUri: string): Promise<Extra
   }
 }
 
-export async function callAnalyzeTrendAction(readings: AnalyzeBloodPressureTrendInput['readings']): Promise<AnalyzeBloodPressureTrendOutput> {
-  if (!readings || readings.length === 0) {
-    // Return a default structure or throw an error if no readings are provided for analysis.
-    // For this app, returning a specific structure indicating no data might be better than throwing.
+// The input type for this action now directly matches AnalyzeBloodPressureTrendInput
+export async function callAnalyzeTrendAction(input: AnalyzeBloodPressureTrendInput): Promise<AnalyzeBloodPressureTrendOutput> {
+  if (!input.readings || input.readings.length === 0) {
     return {
-        summary: "No recent readings available to analyze.",
+        summary: "No recent readings available to analyze. Add some readings to get started.\n\n⚠️ This is not medical advice. Consult a healthcare professional for any concerns.",
         flags: [],
         suggestions: ["Please add more readings to get a trend analysis."]
     };
   }
-  const input: AnalyzeBloodPressureTrendInput = { readings };
+  // The input is already in the correct shape for the analyzeBloodPressureTrend flow
   try {
     return await analyzeBloodPressureTrend(input);
   } catch (error) {
     console.error("Error in callAnalyzeTrendAction:", error);
-    throw new Error("Failed to analyze blood pressure trend. The AI model encountered an issue.");
+    // Ensure even errors return the disclaimer if possible, or a generic error message with it.
+    const errorMessage = error instanceof Error ? error.message : "Failed to analyze blood pressure trend. The AI model encountered an issue.";
+    throw new Error(`${errorMessage}\n\n⚠️ This is not medical advice. Consult a healthcare professional for any concerns.`);
   }
 }

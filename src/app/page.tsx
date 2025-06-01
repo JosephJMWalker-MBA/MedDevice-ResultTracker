@@ -1,7 +1,8 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData } from '@/lib/types';
+import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile } from '@/lib/types';
 import { callAnalyzeTrendAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 
@@ -12,23 +13,25 @@ import DisclaimerAlert from '@/components/blood-pressure/disclaimer-alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart3 } from 'lucide-react';
+import type { AnalyzeBloodPressureTrendInput } from '@/ai/flows/analyze-blood-pressure-trend';
 
 
 export default function HomePage() {
   const [readings, setReadings] = useState<BloodPressureReading[]>([]);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null); // State for user profile
   const [analysis, setAnalysis] = useState<TrendAnalysisResult | null>(null);
   const [isLoadingOcr, setIsLoadingOcr] = useState(false);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const { toast } = useToast();
 
-  const triggerAnalysis = useCallback(async (currentReadings: BloodPressureReading[]) => {
+  const triggerAnalysis = useCallback(async (currentReadings: BloodPressureReading[], profile: UserProfile | null) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const recentReadings = currentReadings
       .filter(r => new Date(r.timestamp) >= thirtyDaysAgo)
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()); // AI might prefer chronological
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()); 
 
     if (recentReadings.length === 0) {
       setAnalysis({
@@ -42,26 +45,33 @@ export default function HomePage() {
 
     setIsLoadingAnalysis(true);
     try {
-      const analysisInput = recentReadings.map(r => ({
-        timestamp: r.timestamp,
-        systolic: r.systolic,
-        diastolic: r.diastolic,
-        age: r.age,
-        weight: r.weight,
-        medications: r.medications,
-      }));
-      const result = await callAnalyzeTrendAction(analysisInput);
+      const analysisPayload: AnalyzeBloodPressureTrendInput = {
+        readings: recentReadings.map(r => ({
+          timestamp: r.timestamp,
+          systolic: r.systolic,
+          diastolic: r.diastolic,
+          bodyPosition: r.bodyPosition, // Now included
+          medications: r.medications,
+        })),
+        // Conditionally add profile data if available
+        ...(profile?.age && { age: profile.age }),
+        ...(profile?.weightLbs && { weightLbs: profile.weightLbs }),
+        ...(profile?.gender && { gender: profile.gender }),
+        ...(profile?.raceEthnicity && { raceEthnicity: profile.raceEthnicity }),
+        ...(profile?.medicalConditions && profile.medicalConditions.length > 0 && { medicalConditions: profile.medicalConditions }),
+      };
+      
+      const result = await callAnalyzeTrendAction(analysisPayload);
       setAnalysis(result);
     } catch (error: any) {
       console.error("Error analyzing trend:", error);
       toast({ variant: 'destructive', title: 'Analysis Error', description: error.message || 'Could not analyze trend.' });
-      setAnalysis(null); // Clear previous analysis on error
+      setAnalysis(null);
     } finally {
       setIsLoadingAnalysis(false);
     }
   }, [toast]);
   
-  // Load initial readings from localStorage
   useEffect(() => {
     setIsInitialLoad(true);
     try {
@@ -69,21 +79,40 @@ export default function HomePage() {
       if (storedReadings) {
         const parsedReadings: BloodPressureReading[] = JSON.parse(storedReadings);
         setReadings(parsedReadings);
-        if (parsedReadings.length > 0) {
-          triggerAnalysis(parsedReadings);
-        }
       }
+      // Load user profile from localStorage (will be implemented in profile feature)
+      const storedProfile = localStorage.getItem('bpUserProfile');
+      let loadedProfile: UserProfile | null = null;
+      if (storedProfile) {
+        loadedProfile = JSON.parse(storedProfile);
+        setUserProfile(loadedProfile);
+      }
+
+      // Trigger analysis if readings exist, using potentially loaded profile
+      const currentReadings = storedReadings ? JSON.parse(storedReadings) : [];
+      if (currentReadings.length > 0) {
+         triggerAnalysis(currentReadings, loadedProfile);
+      }
+
     } catch (error) {
-      console.error("Failed to load readings from localStorage:", error);
-      toast({ variant: 'destructive', title: 'Load Error', description: 'Could not load saved readings.' });
+      console.error("Failed to load data from localStorage:", error);
+      toast({ variant: 'destructive', title: 'Load Error', description: 'Could not load saved data.' });
     } finally {
       setIsInitialLoad(false);
     }
-  }, [triggerAnalysis, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps 
+  }, []); // Only run on initial mount, triggerAnalysis will be called by other effects/handlers
+
+  useEffect(() => {
+    if (!isInitialLoad && readings.length > 0) {
+        triggerAnalysis(readings, userProfile);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps  
+  }, [readings, userProfile]); // Re-analyze if readings or profile change (after initial load)
+
 
   // Save readings to localStorage whenever they change
   useEffect(() => {
-    // Don't save during initial load if readings are still empty, to prevent overwriting with empty array
     if (!isInitialLoad && readings) { 
       try {
         localStorage.setItem('bpReadings', JSON.stringify(readings));
@@ -96,17 +125,16 @@ export default function HomePage() {
 
   const handleAddReading = (data: ReadingFormData) => {
     const newReading: BloodPressureReading = {
-      id: Date.now().toString() + Math.random().toString(36).substring(2,9), // More unique ID
+      id: Date.now().toString() + Math.random().toString(36).substring(2,9),
       timestamp: new Date(`${data.date}T${data.time}`).toISOString(),
       systolic: data.systolic,
       diastolic: data.diastolic,
-      age: data.age,
-      weight: data.weight,
+      bodyPosition: data.bodyPosition, // New field
       medications: data.medications || '',
     };
     const updatedReadings = [...readings, newReading].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setReadings(updatedReadings);
-    triggerAnalysis(updatedReadings);
+    // triggerAnalysis is now handled by the useEffect watching `readings`
   };
 
   return (

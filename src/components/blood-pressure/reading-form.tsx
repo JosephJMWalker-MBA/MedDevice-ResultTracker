@@ -7,15 +7,18 @@ import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+// import { Label } from '@/components/ui/label'; // Label is part of FormLabel
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { ReadingFormData, ReadingFormSchema, type OcrData } from '@/lib/types';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ReadingFormData, ReadingFormSchema, type OcrData, BodyPositionOptions } from '@/lib/types';
 import { callExtractDataAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileScan, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { UploadCloud, FileScan, Loader2, CheckCircle, AlertCircle, CalendarClockIcon } from 'lucide-react';
 import Image from 'next/image';
+import ExifReader from 'exifreader';
+
 
 interface ReadingFormProps {
   onReadingAdded: (data: ReadingFormData) => void;
@@ -36,19 +39,18 @@ const fileToDataUri = (file: File): Promise<string> => {
 export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsLoadingOcrParent }: ReadingFormProps) {
   const { toast } = useToast();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [ocrStatus, setOcrStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [ocrProcessingStatus, setOcrProcessingStatus] = useState<'idle' | 'exif_applied' | 'ocr_done' | 'error'>('idle');
 
   const form = useForm<ReadingFormData>({
     resolver: zodResolver(ReadingFormSchema),
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-      systolic: '', // Initialize as empty string
-      diastolic: '', // Initialize as empty string
-      age: '',       // Initialize as empty string
-      weight: '',     // Initialize as empty string
+      systolic: '', 
+      diastolic: '',
+      bodyPosition: BodyPositionOptions[0], // Default to "Sitting"
       medications: '',
-      // imageFile is implicitly undefined here, which is fine for file inputs.
+      imageFile: undefined,
     },
   });
 
@@ -57,29 +59,54 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
     if (file) {
       setImagePreview(URL.createObjectURL(file));
       setIsLoadingOcrParent(true);
-      setOcrStatus('idle');
+      setOcrProcessingStatus('idle');
+      let exifDateApplied = false;
+
+      // Attempt to read EXIF data
+      try {
+        const tags = await ExifReader.load(file);
+        const dateTimeOriginal = tags['DateTimeOriginal']?.description;
+        if (dateTimeOriginal && typeof dateTimeOriginal === 'string') {
+          const parts = dateTimeOriginal.split(' ');
+          if (parts.length === 2) {
+            const dateFromExif = parts[0].replace(/:/g, '-'); // YYYY-MM-DD
+            const timeFromExif = parts[1].substring(0, 5); // HH:MM
+            form.setValue('date', dateFromExif);
+            form.setValue('time', timeFromExif);
+            toast({ title: 'EXIF Data Applied', description: 'Date and time auto-filled from image metadata.', className: 'bg-blue-50 border-blue-300 text-blue-800 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300 [&>svg]:text-blue-600' });
+            setOcrProcessingStatus('exif_applied');
+            exifDateApplied = true;
+          }
+        }
+      } catch (exifError) {
+        console.warn("Could not read EXIF data:", exifError);
+      }
+
+      // Proceed with OCR
       try {
         const dataUri = await fileToDataUri(file);
         const extractedData: OcrData = await callExtractDataAction(dataUri);
         
-        // form.setValue will convert number to string for input type="number" if needed,
-        // or keep as number. The key is it's a defined value.
-        if (extractedData.date) form.setValue('date', extractedData.date);
-        if (extractedData.time) form.setValue('time', extractedData.time);
+        // Only set OCR date/time if EXIF didn't provide it
+        if (extractedData.date && !form.getValues('date')) form.setValue('date', extractedData.date);
+        if (extractedData.time && !form.getValues('time')) form.setValue('time', extractedData.time);
+        
         if (extractedData.systolic) form.setValue('systolic', extractedData.systolic);
         if (extractedData.diastolic) form.setValue('diastolic', extractedData.diastolic);
         
-        toast({ title: 'OCR Success', description: 'Data extracted. Please verify and complete the form.' });
-        setOcrStatus('success');
+        if (extractedData.systolic || extractedData.diastolic) {
+            toast({ title: 'OCR Success', description: 'Systolic/Diastolic data extracted. Please verify.' });
+        }
+        setOcrProcessingStatus(ocrProcessingStatus === 'exif_applied' && !exifDateApplied ? 'ocr_done' : (exifDateApplied ? 'exif_applied' : 'ocr_done') );
       } catch (error: any) {
         toast({ variant: 'destructive', title: 'OCR Error', description: error.message || 'Could not extract data from image.' });
-        setOcrStatus('error');
+        setOcrProcessingStatus('error');
       } finally {
         setIsLoadingOcrParent(false);
       }
     } else {
       setImagePreview(null);
-      setOcrStatus('idle');
+      setOcrProcessingStatus('idle');
     }
   };
 
@@ -88,24 +115,22 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
     form.reset({
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-      systolic: '', // Reset to empty string
-      diastolic: '', // Reset to empty string
-      age: data.age, // Keep previously submitted numeric age (data.age is number from Zod)
-      weight: data.weight, // Keep previously submitted numeric weight (data.weight is number from Zod)
+      systolic: '', 
+      diastolic: '',
+      bodyPosition: BodyPositionOptions[0],
       medications: '', 
-      imageFile: undefined, // Reset file input
+      imageFile: undefined, 
     });
     setImagePreview(null);
-    setOcrStatus('idle');
+    setOcrProcessingStatus('idle');
     const fileInput = document.getElementById('imageFile') as HTMLInputElement | null;
     if (fileInput) {
-        fileInput.value = '';
+        fileInput.value = ''; // Clears the file input
     }
     toast({ title: 'Reading Added', description: 'Your blood pressure reading has been saved.' });
   };
   
-  // This useEffect is mostly redundant now as defaultValues handles date/time.
-  // Keeping it in case of edge cases or if defaultValues were removed for date/time.
+  // Set default date/time if not already set (e.g. by EXIF or user)
   useEffect(() => {
     if (!form.getValues('date')) {
       form.setValue('date', new Date().toISOString().split('T')[0]);
@@ -123,7 +148,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
           <FileScan className="h-7 w-7 text-primary" />
           Add New Reading
         </CardTitle>
-        <CardDescription>Upload an image of your reading or enter details manually. Fill in all fields for accurate tracking.</CardDescription>
+        <CardDescription>Upload an image for OCR and EXIF date/time extraction, or enter details manually. Fill in all required fields.</CardDescription>
       </CardHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -131,7 +156,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
             <FormField
               control={form.control}
               name="imageFile"
-              render={({ field }) => ( // field.value will be FileList or undefined
+              render={({ field }) => ( 
                 <FormItem>
                   <FormLabel htmlFor="imageFile" className="text-base">Upload Image (Optional)</FormLabel>
                   <FormControl>
@@ -146,6 +171,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
                       className="file:text-primary file:font-semibold hover:file:bg-primary/10"
                     />
                   </FormControl>
+                  <FormDescription>EXIF data (date/time) will be extracted if available. OCR will attempt to fill other fields.</FormDescription>
                   <FormMessage />
                   {imagePreview && (
                     <div className="mt-2 relative w-48 h-32 rounded-md overflow-hidden border">
@@ -153,8 +179,9 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
                     </div>
                   )}
                   {isLoadingOcrParent && <div className="flex items-center mt-2 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing image...</div>}
-                  {ocrStatus === 'success' && !isLoadingOcrParent && <div className="flex items-center mt-2 text-sm text-green-600"><CheckCircle className="mr-2 h-4 w-4" /> OCR successful.</div>}
-                  {ocrStatus === 'error' && !isLoadingOcrParent && <div className="flex items-center mt-2 text-sm text-destructive"><AlertCircle className="mr-2 h-4 w-4" /> OCR failed. Please enter manually.</div>}
+                  {ocrProcessingStatus === 'exif_applied' && !isLoadingOcrParent && <div className="flex items-center mt-2 text-sm text-blue-600"><CalendarClockIcon className="mr-2 h-4 w-4" /> EXIF date/time applied. OCR results (if any) also applied.</div>}
+                  {ocrProcessingStatus === 'ocr_done' && !isLoadingOcrParent && <div className="flex items-center mt-2 text-sm text-green-600"><CheckCircle className="mr-2 h-4 w-4" /> OCR successful.</div>}
+                  {ocrProcessingStatus === 'error' && !isLoadingOcrParent && <div className="flex items-center mt-2 text-sm text-destructive"><AlertCircle className="mr-2 h-4 w-4" /> OCR failed. Please enter manually.</div>}
                 </FormItem>
               )}
             />
@@ -163,7 +190,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="date"
-                render={({ field }) => ( // field.value is string
+                render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-base">Date</FormLabel>
                     <FormControl>
@@ -176,7 +203,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="time"
-                render={({ field }) => ( // field.value is string
+                render={({ field }) => ( 
                   <FormItem>
                     <FormLabel className="text-base">Time</FormLabel>
                     <FormControl>
@@ -192,7 +219,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="systolic"
-                render={({ field }) => ( // field.value is '' or number (or string representation of number)
+                render={({ field }) => ( 
                   <FormItem>
                     <FormLabel className="text-base">Systolic (SYS)</FormLabel>
                     <FormControl>
@@ -205,7 +232,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="diastolic"
-                render={({ field }) => ( // field.value is '' or number
+                render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-base">Diastolic (DIA)</FormLabel>
                     <FormControl>
@@ -217,39 +244,33 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               />
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="age"
-                render={({ field }) => ( // field.value is '' or number
-                  <FormItem>
-                    <FormLabel className="text-base">Age</FormLabel>
+            <FormField
+              control={form.control}
+              name="bodyPosition"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-base">Body Position</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
-                      <Input type="number" placeholder="Your current age" {...field} value={field.value ?? ''} />
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select body position" />
+                      </SelectTrigger>
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="weight"
-                render={({ field }) => ( // field.value is '' or number
-                  <FormItem>
-                    <FormLabel className="text-base">Weight (lbs)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="Your current weight in lbs" {...field} value={field.value ?? ''} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                    <SelectContent>
+                      {BodyPositionOptions.map(option => (
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
               name="medications"
-              render={({ field }) => ( // field.value is string
+              render={({ field }) => ( 
                 <FormItem>
                   <FormLabel className="text-base">Medications (Optional)</FormLabel>
                   <FormControl>
@@ -271,4 +292,3 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
     </Card>
   );
 }
-
