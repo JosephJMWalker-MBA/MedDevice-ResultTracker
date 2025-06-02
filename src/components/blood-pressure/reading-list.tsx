@@ -11,9 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCap
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell, Stethoscope, HeartPulseIcon, Pencil, Trash2, MessageSquareText } from 'lucide-react';
+import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell, Stethoscope, HeartPulseIcon, Pencil, MessageSquareText } from 'lucide-react';
 
 
 interface ReadingListProps {
@@ -21,7 +20,7 @@ interface ReadingListProps {
   analysis: TrendAnalysisResult | null;
   userProfile: UserProfile | null;
   onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
+  // onDelete is removed, will be handled in edit modal
 }
 
 const getBpCategory = (systolic: number, diastolic: number): { category: string; colorClass: string; Icon: React.ElementType } => {
@@ -46,16 +45,16 @@ const getBodyPositionIcon = (position?: BloodPressureReading['bodyPosition']): R
 
 const getExerciseContextIcon = (context?: BloodPressureReading['exerciseContext']): React.ElementType => {
   switch (context) {
-    case 'Resting': return Dumbbell; // Changed from Stethoscope for resting exercise context
-    case 'Pre-Exercise': return Zap; // Changed from Bike for pre-exercise
-    case 'During Exercise': return Bike; // Keep Bike for during
-    case 'Post-Exercise': return ThermometerSun; // Keep ThermometerSun for post
+    case 'Resting': return Dumbbell;
+    case 'Pre-Exercise': return Zap;
+    case 'During Exercise': return Bike;
+    case 'Post-Exercise': return ThermometerSun;
     default: return HelpCircleIcon;
   }
 };
 
 
-export default function ReadingList({ readings, analysis, userProfile, onEdit, onDelete }: ReadingListProps) {
+export default function ReadingList({ readings, analysis, userProfile, onEdit }: ReadingListProps) {
   const { toast } = useToast();
   const disclaimerText = "⚠️ This is not medical advice. Consult a healthcare professional for any concerns.";
 
@@ -75,7 +74,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
 
     if (analysis) {
         text += "Trend Analysis Summary:\n";
-        if(analysis.summary) text += `${analysis.summary.replace(disclaimerText, '').trim()}\n\n`; // Remove disclaimer if present, then add at end
+        if(analysis.summary) text += `${analysis.summary.replace(disclaimerText, '').trim()}\n\n`;
         if (analysis.flags && analysis.flags.length > 0) {
             text += "Flags:\n";
             analysis.flags.forEach(f => text += `- ${f}\n`);
@@ -83,7 +82,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
         }
         if (analysis.suggestions && analysis.suggestions.length > 0) {
             text += "Suggestions & Next Steps:\n";
-            analysis.suggestions.forEach(s => text += `- ${s.replace(/\[.*?\]/g, '').trim()}\n`); // Remove placeholders like [TREND_CHART] for text share
+            analysis.suggestions.forEach(s => text += `- ${s.replace(/\[.*?\]/g, '').trim()}\n`);
             text += "\n";
         }
     }
@@ -117,13 +116,11 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
                 return;
             }
         }
-        // Fallback to text only if PDF cannot be shared or generation failed
         await navigator.share(shareData);
         toast({ title: 'Shared!', description: 'Report text sent to sharing target.' });
 
       } catch (error: any) {
         if (error.name === 'AbortError') {
-          // User cancelled the share operation
           console.log('Share operation cancelled by user.');
           toast({ title: 'Share Cancelled', description: 'The share operation was cancelled.' });
         } else if (error.name === 'NotAllowedError') {
@@ -131,7 +128,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
           toast({
             variant: 'destructive',
             title: 'Share Permission Denied',
-            description: 'Could not share because permission was denied by the browser. Report copied to clipboard as a fallback.',
+            description: 'Could not share: Permission denied. Report copied to clipboard.',
           });
           copyReportToClipboard(reportText);
         } else {
@@ -139,7 +136,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
           toast({
             variant: 'destructive',
             title: 'Share Error',
-            description: `Could not share: ${error.message}. Report copied to clipboard as a fallback.`,
+            description: `Could not share: ${error.message}. Report copied to clipboard.`,
           });
           copyReportToClipboard(reportText);
         }
@@ -168,9 +165,8 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
     if (readings.length === 0 && !analysis) {
       return null;
     }
-    // Use a new instance of jsPDF for blob generation to avoid state issues
     const docInstance = new jsPDF(); 
-    exportToPDF(true, docInstance); // Pass true for blob mode and the instance
+    exportToPDF(true, docInstance);
     return docInstance.output('blob');
   };
 
@@ -196,7 +192,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
 
     if (analysis) {
         if (analysis.summary) {
-            analysisSummaryText = analysis.summary.replace(disclaimerText, "").trim(); // Remove disclaimer for data section
+            analysisSummaryText = analysis.summary.replace(disclaimerText, "").trim();
             csvContent += `\n\nTrend Analysis Summary:\n"${analysisSummaryText.replace(/"/g, '""')}"`;
         }
         if (analysis.flags && analysis.flags.length > 0) {
@@ -224,6 +220,20 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
     toast({ title: 'Export Successful', description: 'Readings and analysis report exported to CSV.' });
   };
 
+  const addDisclaimerToCurrentPage = (docInstance: jsPDF) => {
+    const pageHeight = docInstance.internal.pageSize.getHeight();
+    const pageWidth = docInstance.internal.pageSize.getWidth();
+    const margin = 14;
+    const currentFontSize = docInstance.getFontSize();
+    docInstance.setFontSize(8);
+    const disclaimerLinesUnsafe = docInstance.splitTextToSize(disclaimerText, pageWidth - margin * 2);
+    const disclaimerLines: string[] = Array.isArray(disclaimerLinesUnsafe) ? disclaimerLinesUnsafe : [disclaimerLinesUnsafe];
+    let textHeight = disclaimerLines.length * 3.5; 
+    
+    docInstance.text(disclaimerLines, margin, pageHeight - (margin/2) - textHeight);
+    docInstance.setFontSize(currentFontSize);
+  };
+
   const exportToPDF = (forBlob = false, doc?: jsPDF) => {
     if (readings.length === 0 && !analysis && !forBlob) {
       toast({ variant: 'destructive', title: 'No Data', description: 'No readings or analysis to export.' });
@@ -236,17 +246,6 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
     const pageWidth = pdfDoc.internal.pageSize.getWidth();
     const margin = 14;
     const bottomMarginForDisclaimer = 25; 
-
-    const addDisclaimerToCurrentPage = (docInstance: jsPDF) => {
-        const currentFontSize = docInstance.getFontSize();
-        docInstance.setFontSize(8);
-        const disclaimerLinesUnsafe = docInstance.splitTextToSize(disclaimerText, pageWidth - margin * 2);
-        const disclaimerLines: string[] = Array.isArray(disclaimerLinesUnsafe) ? disclaimerLinesUnsafe : [disclaimerLinesUnsafe];
-        let textHeight = disclaimerLines.length * 3.5; 
-        
-        docInstance.text(disclaimerLines, margin, pageHeight - (margin/2) - textHeight);
-        docInstance.setFontSize(currentFontSize);
-    };
 
     pdfDoc.setFontSize(16);
     pdfDoc.text('Blood Pressure Report - PressureTrack AI', pageWidth / 2, 15, { align: 'center' });
@@ -280,9 +279,8 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
             body: tableRows,
             startY: startY,
             theme: 'grid',
-            headStyles: { fillColor: [34, 102, 153] }, // Example: A shade of blue
-            margin: { top: startY, left: margin, right: margin, bottom: bottomMarginForDisclaimer + 5 }, // Increased bottom margin for table
-            // didDrawPage: (data: any) => { addDisclaimerToCurrentPage(pdfDoc); } // Removed from here
+            headStyles: { fillColor: [34, 102, 153] },
+            margin: { top: startY, left: margin, right: margin, bottom: bottomMarginForDisclaimer + 10 }, // Increased bottom margin
         });
         startY = (pdfDoc as any).lastAutoTable.finalY + 10;
     }
@@ -475,30 +473,6 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
                         <Button variant="ghost" size="icon" onClick={() => onEdit(reading.id)} title="Edit Reading">
                             <Pencil className="h-4 w-4" />
                         </Button>
-                        <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" title="Delete Reading">
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    This action cannot be undone. This will permanently delete this blood pressure reading.
-                                </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                    onClick={() => onDelete(reading.id)}
-                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                >
-                                    Delete
-                                </AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
                     </TableCell>
                 </TableRow>
               );
@@ -507,7 +481,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
            {readings.length > 5 && <TableCaption>Scroll for more readings. Table shows most recent readings first.</TableCaption>}
         </Table>
       </CardContent>
-      <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 pt-4 flex-wrap">
+      <CardFooter className="flex flex-col sm:flex-row justify-center gap-2 pt-4 flex-wrap">
           <Button variant="outline" onClick={exportToCSV} disabled={readings.length === 0 && !analysis}>
             <FileText className="mr-2 h-4 w-4" /> Export to CSV
           </Button>

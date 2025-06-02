@@ -14,10 +14,11 @@ import DisclaimerAlert from '@/components/blood-pressure/disclaimer-alert';
 import BpChart from '@/components/blood-pressure/bp-chart';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart3, TrendingUp, FileScan } from 'lucide-react';
+import { BarChart3, TrendingUp, FileScan, Trash2 } from 'lucide-react';
 import type { AnalyzeBloodPressureTrendInput } from '@/ai/flows/analyze-blood-pressure-trend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 
 export default function HomePage() {
@@ -30,6 +31,7 @@ export default function HomePage() {
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [currentEditingReading, setCurrentEditingReading] = useState<BloodPressureReading | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
 
   const triggerAnalysis = useCallback(async (currentReadings: BloodPressureReading[], profile: UserProfile | null) => {
@@ -57,7 +59,7 @@ export default function HomePage() {
           timestamp: r.timestamp,
           systolic: r.systolic,
           diastolic: r.diastolic,
-          pulse: r.pulse, // Added
+          pulse: r.pulse,
           bodyPosition: r.bodyPosition || BodyPositionOptions[0],
           exerciseContext: r.exerciseContext || ExerciseContextOptions[0],
           symptoms: r.symptoms || [],
@@ -95,7 +97,7 @@ export default function HomePage() {
           timestamp: reading.timestamp || new Date().toISOString(),
           systolic: typeof reading.systolic === 'number' ? reading.systolic : 0,
           diastolic: typeof reading.diastolic === 'number' ? reading.diastolic : 0,
-          pulse: typeof reading.pulse === 'number' ? reading.pulse : undefined, // Added
+          pulse: typeof reading.pulse === 'number' ? reading.pulse : undefined,
           bodyPosition: BodyPositionOptions.includes(reading.bodyPosition) ? reading.bodyPosition : BodyPositionOptions[0],
           exerciseContext: ExerciseContextOptions.includes(reading.exerciseContext) ? reading.exerciseContext : ExerciseContextOptions[0],
           symptoms: Array.isArray(reading.symptoms) ? reading.symptoms : [],
@@ -138,11 +140,11 @@ export default function HomePage() {
   }, [readings, isInitialLoad, toast]);
 
   const handleFormSubmit = (data: ReadingFormData) => {
-    if (currentEditingReading) { // Handle update
+    if (currentEditingReading) { 
       const updatedReadings = readings.map(r =>
         r.id === currentEditingReading.id
           ? {
-              ...r, // Keep original ID and other non-form fields
+              ...r, 
               timestamp: new Date(`${data.date}T${data.time}`).toISOString(),
               systolic: data.systolic,
               diastolic: data.diastolic,
@@ -157,7 +159,7 @@ export default function HomePage() {
       toast({ title: 'Reading Updated', description: 'Your blood pressure reading has been updated.' });
       setShowEditModal(false);
       setCurrentEditingReading(null);
-    } else { // Handle add new
+    } else { 
       const newReading: BloodPressureReading = {
         id: Date.now().toString() + Math.random().toString(36).substring(2,9),
         timestamp: new Date(`${data.date}T${data.time}`).toISOString(),
@@ -182,10 +184,15 @@ export default function HomePage() {
     }
   };
 
-  const handleDeleteReading = (id: string) => {
-    const updatedReadings = readings.filter(r => r.id !== id);
-    setReadings(updatedReadings);
-    toast({ title: 'Reading Deleted', description: 'The blood pressure reading has been removed.' });
+  const handleDeleteReading = () => {
+    if (currentEditingReading) {
+      const updatedReadings = readings.filter(r => r.id !== currentEditingReading.id);
+      setReadings(updatedReadings);
+      toast({ title: 'Reading Deleted', description: 'The blood pressure reading has been removed.' });
+      setShowEditModal(false);
+      setCurrentEditingReading(null);
+      setShowDeleteConfirm(false);
+    }
   };
   
   const editingReadingFormData: ReadingFormData | undefined = currentEditingReading ? {
@@ -193,11 +200,10 @@ export default function HomePage() {
     time: new Date(currentEditingReading.timestamp).toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
     systolic: currentEditingReading.systolic,
     diastolic: currentEditingReading.diastolic,
-    pulse: currentEditingReading.pulse ?? null, // Ensure it's null if undefined for the form
+    pulse: currentEditingReading.pulse ?? null,
     bodyPosition: currentEditingReading.bodyPosition,
     exerciseContext: currentEditingReading.exerciseContext,
     symptoms: currentEditingReading.symptoms || [],
-    // imageFile is not directly editable here, typically users would re-upload or just edit data
   } : undefined;
 
 
@@ -214,6 +220,7 @@ export default function HomePage() {
           if (!isOpen) {
             setShowEditModal(false);
             setCurrentEditingReading(null);
+            setShowDeleteConfirm(false); // Ensure delete confirm is also closed
           } else {
             setShowEditModal(true);
           }
@@ -222,7 +229,7 @@ export default function HomePage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><FileScan className="h-6 w-6 text-primary"/>Edit Blood Pressure Reading</DialogTitle>
             <DialogDescription>
-              Make changes to your existing blood pressure reading. Click "Update Reading" to save.
+              Make changes to your existing blood pressure reading. Click "Update Reading" to save or "Delete" to remove.
             </DialogDescription>
           </DialogHeader>
           {currentEditingReading && editingReadingFormData && (
@@ -233,8 +240,33 @@ export default function HomePage() {
               isLoadingExternally={isLoadingAnalysis}
             />
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowEditModal(false); setCurrentEditingReading(null); }}>Cancel</Button>
+          <DialogFooter className="flex justify-between sm:justify-between w-full">
+            <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" className="mr-auto"> 
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Reading
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete this blood pressure reading.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDeleteReading} className="bg-destructive hover:bg-destructive/90">
+                    Yes, delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => { setShowEditModal(false); setCurrentEditingReading(null); setShowDeleteConfirm(false); }}>Cancel</Button>
+              {/* Update button is part of the ReadingForm, submitted via its own logic */}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -295,7 +327,6 @@ export default function HomePage() {
                 analysis={analysis}
                 userProfile={userProfile}
                 onEdit={handleOpenEditModal}
-                onDelete={handleDeleteReading}
             />
         </div>
       )}
@@ -304,3 +335,4 @@ export default function HomePage() {
     </div>
   );
 }
+

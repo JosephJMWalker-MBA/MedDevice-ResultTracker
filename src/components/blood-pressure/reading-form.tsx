@@ -21,9 +21,9 @@ import ExifReader from 'exifreader';
 
 interface ReadingFormProps {
   onFormSubmit: (data: ReadingFormData) => void;
-  initialData?: ReadingFormData; // For editing
+  initialData?: ReadingFormData; 
   isEditing?: boolean;
-  isLoadingExternally?: boolean; // For external loading state like AI analysis
+  isLoadingExternally?: boolean; 
 }
 
 const fileToDataUri = (file: File): Promise<string> => {
@@ -108,10 +108,11 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
 
         if (extractedData.systolic) form.setValue('systolic', extractedData.systolic as any);
         if (extractedData.diastolic) form.setValue('diastolic', extractedData.diastolic as any);
+        if (extractedData.pulse) form.setValue('pulse', extractedData.pulse as any);
 
 
-        if (extractedData.systolic || extractedData.diastolic) {
-            toast({ title: 'OCR Success', description: 'Systolic/Diastolic data extracted. Please verify.' });
+        if (extractedData.systolic || extractedData.diastolic || extractedData.pulse) {
+            toast({ title: 'OCR Success', description: 'Data extracted. Please verify.' });
         }
         setOcrProcessingStatus(ocrProcessingStatus === 'exif_applied' && !exifDateApplied ? 'ocr_done' : (exifDateApplied ? 'exif_applied' : 'ocr_done') );
       } catch (error: any) {
@@ -149,249 +150,262 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
     }
   };
 
+  const FormContent = (
+    <>
+      {!isEditing && (
+        <CardHeader>
+          <CardTitle className="text-2xl flex items-center gap-2">
+            <FileScan className="h-7 w-7 text-primary" />
+            Add New Reading
+          </CardTitle>
+          <CardDescription>Upload an image for OCR and EXIF date/time extraction, or enter details manually. Fill in all required fields.</CardDescription>
+        </CardHeader>
+      )}
+      <CardContent className={`space-y-6 ${isEditing ? 'pt-6' : ''}`}>
+       {!isEditing && (
+        <FormField
+          control={form.control}
+          name="imageFile"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel htmlFor="imageFile">Upload Image (Optional)</FormLabel>
+              <FormControl>
+                <Input
+                  id="imageFile"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    field.onChange(e.target.files);
+                    handleImageChange(e);
+                  }}
+                  className="file:text-primary file:font-semibold hover:file:bg-primary/10"
+                />
+              </FormControl>
+              <FormDescription>EXIF data (date/time) will be extracted if available. OCR will attempt to fill other fields.</FormDescription>
+              <FormMessage />
+              {imagePreview && (
+                <div className="mt-2 relative w-48 h-32 rounded-md overflow-hidden border">
+                  <Image src={imagePreview} alt="Reading preview" layout="fill" objectFit="contain" data-ai-hint="medical device"/>
+                </div>
+              )}
+              {isLoadingOcr && <div className="flex items-center mt-2 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing image...</div>}
+              {ocrProcessingStatus === 'exif_applied' && !isLoadingOcr && <div className="flex items-center mt-2 text-sm text-blue-600"><CalendarClockIcon className="mr-2 h-4 w-4" /> EXIF date/time applied. OCR results (if any) also applied.</div>}
+              {ocrProcessingStatus === 'ocr_done' && !isLoadingOcr && <div className="flex items-center mt-2 text-sm text-green-600"><CheckCircle className="mr-2 h-4 w-4" /> OCR successful.</div>}
+              {ocrProcessingStatus === 'error' && !isLoadingOcr && <div className="flex items-center mt-2 text-sm text-destructive"><AlertCircle className="mr-2 h-4 w-4" /> OCR failed. Please enter manually.</div>}
+            </FormItem>
+          )}
+        />
+       )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <FormField
+            control={form.control}
+            name="date"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Date</FormLabel>
+                <FormControl>
+                  <Input type="date" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="time"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Time</FormLabel>
+                <FormControl>
+                  <Input type="time" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <FormField
+            control={form.control}
+            name="systolic"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Systolic (SYS)</FormLabel>
+                <FormControl>
+                  <Input type="number" placeholder="e.g., 120" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="diastolic"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Diastolic (DIA)</FormLabel>
+                <FormControl>
+                  <Input type="number" placeholder="e.g., 80" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="pulse"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="flex items-center gap-1">
+                    <HeartPulseIcon className="h-4 w-4 text-muted-foreground" />
+                    Pulse (bpm)
+                </FormLabel>
+                <FormControl>
+                  <Input type="number" placeholder="e.g., 70" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField
+            control={form.control}
+            name="bodyPosition"
+            render={({ field }) => (
+                <FormItem>
+                <FormLabel>Body Position</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value} >
+                    <FormControl>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select body position" />
+                    </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                    {BodyPositionOptions.map(option => (
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
+                    ))}
+                    </SelectContent>
+                </Select>
+                <FormMessage />
+                </FormItem>
+            )}
+            />
+            <FormField
+            control={form.control}
+            name="exerciseContext"
+            render={({ field }) => (
+                <FormItem>
+                <FormLabel className="flex items-center gap-1">
+                    <Bike className="h-4 w-4 text-muted-foreground" />
+                    Exercise Context
+                </FormLabel>
+                <Select onValueChange={field.onChange} value={field.value} >
+                    <FormControl>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select exercise context" />
+                    </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                    {ExerciseContextOptions.map(option => (
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
+                    ))}
+                    </SelectContent>
+                </Select>
+                <FormMessage />
+                </FormItem>
+            )}
+            />
+        </div>
+         <FormField
+          control={form.control}
+          name="symptoms"
+          render={() => (
+            <FormItem>
+              <div className="mb-4">
+                <FormLabel className="flex items-center gap-1">
+                    <Stethoscope className="h-4 w-4 text-muted-foreground" />
+                    Symptoms (Optional)
+                </FormLabel>
+                <FormDescription>
+                  Select any symptoms you were experiencing at the time of reading.
+                </FormDescription>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-2">
+                {StaticSymptomsList.map((symptom) => (
+                  <FormField
+                    key={symptom}
+                    control={form.control}
+                    name="symptoms"
+                    render={({ field }) => {
+                      return (
+                        <FormItem
+                          key={symptom}
+                          className="flex flex-row items-start space-x-3 space-y-0"
+                        >
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value?.includes(symptom)}
+                              onCheckedChange={(checked) => {
+                                let symptômesValue = field.value ? [...field.value] : [];
+                                if (symptom === "None") {
+                                    symptômesValue = checked ? ["None"] : [];
+                                } else {
+                                    symptômesValue = symptômesValue.filter(s => s !== "None"); 
+                                    if (checked) {
+                                        if (!symptômesValue.includes(symptom)) {
+                                            symptômesValue.push(symptom);
+                                        }
+                                    } else {
+                                        symptômesValue = symptômesValue.filter(
+                                            (value) => value !== symptom
+                                        );
+                                    }
+                                }
+                                return field.onChange(symptômesValue);
+                              }}
+                              disabled={symptom !== "None" && field.value?.includes("None")}
+                            />
+                          </FormControl>
+                          <FormLabel className="font-normal">
+                            {symptom}
+                          </FormLabel>
+                        </FormItem>
+                      )
+                    }}
+                  />
+                ))}
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </CardContent>
+      <CardFooter className={isEditing ? 'justify-end' : ''}>
+        <Button type="submit" className={`w-full md:w-auto ${isEditing ? '' : 'w-full md:w-auto'}`} disabled={isLoadingOcr || form.formState.isSubmitting || isLoadingExternally}>
+          {form.formState.isSubmitting || isLoadingExternally ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
+          {isEditing ? 'Update Reading' : 'Add Reading'}
+        </Button>
+      </CardFooter>
+    </>
+  );
+
 
   return (
-    <Card className={`shadow-lg ${isEditing ? 'border-accent' : ''}`}>
-      <CardHeader>
-        <CardTitle className="text-2xl flex items-center gap-2">
-          <FileScan className="h-7 w-7 text-primary" />
-          {isEditing ? 'Edit Reading' : 'Add New Reading'}
-        </CardTitle>
-        {!isEditing && <CardDescription>Upload an image for OCR and EXIF date/time extraction, or enter details manually. Fill in all required fields.</CardDescription>}
-      </CardHeader>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
-          <CardContent className="space-y-6">
-           {!isEditing && (
-            <FormField
-              control={form.control}
-              name="imageFile"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel htmlFor="imageFile">Upload Image (Optional)</FormLabel>
-                  <FormControl>
-                    <Input
-                      id="imageFile"
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        field.onChange(e.target.files);
-                        handleImageChange(e);
-                      }}
-                      className="file:text-primary file:font-semibold hover:file:bg-primary/10"
-                    />
-                  </FormControl>
-                  <FormDescription>EXIF data (date/time) will be extracted if available. OCR will attempt to fill other fields.</FormDescription>
-                  <FormMessage />
-                  {imagePreview && (
-                    <div className="mt-2 relative w-48 h-32 rounded-md overflow-hidden border">
-                      <Image src={imagePreview} alt="Reading preview" layout="fill" objectFit="contain" data-ai-hint="medical device"/>
-                    </div>
-                  )}
-                  {isLoadingOcr && <div className="flex items-center mt-2 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing image...</div>}
-                  {ocrProcessingStatus === 'exif_applied' && !isLoadingOcr && <div className="flex items-center mt-2 text-sm text-blue-600"><CalendarClockIcon className="mr-2 h-4 w-4" /> EXIF date/time applied. OCR results (if any) also applied.</div>}
-                  {ocrProcessingStatus === 'ocr_done' && !isLoadingOcr && <div className="flex items-center mt-2 text-sm text-green-600"><CheckCircle className="mr-2 h-4 w-4" /> OCR successful.</div>}
-                  {ocrProcessingStatus === 'error' && !isLoadingOcr && <div className="flex items-center mt-2 text-sm text-destructive"><AlertCircle className="mr-2 h-4 w-4" /> OCR failed. Please enter manually.</div>}
-                </FormItem>
-              )}
-            />
-           )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Date</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="time"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Time</FormLabel>
-                    <FormControl>
-                      <Input type="time" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <FormField
-                control={form.control}
-                name="systolic"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Systolic (SYS)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="e.g., 120" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="diastolic"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Diastolic (DIA)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="e.g., 80" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="pulse"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-1">
-                        <HeartPulseIcon className="h-4 w-4 text-muted-foreground" />
-                        Pulse (bpm)
-                    </FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="e.g., 70" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <FormField
-                control={form.control}
-                name="bodyPosition"
-                render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Body Position</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} >
-                        <FormControl>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select body position" />
-                        </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                        {BodyPositionOptions.map(option => (
-                            <SelectItem key={option} value={option}>{option}</SelectItem>
-                        ))}
-                        </SelectContent>
-                    </Select>
-                    <FormMessage />
-                    </FormItem>
-                )}
-                />
-                <FormField
-                control={form.control}
-                name="exerciseContext"
-                render={({ field }) => (
-                    <FormItem>
-                    <FormLabel className="flex items-center gap-1">
-                        <Bike className="h-4 w-4 text-muted-foreground" />
-                        Exercise Context
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} >
-                        <FormControl>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select exercise context" />
-                        </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                        {ExerciseContextOptions.map(option => (
-                            <SelectItem key={option} value={option}>{option}</SelectItem>
-                        ))}
-                        </SelectContent>
-                    </Select>
-                    <FormMessage />
-                    </FormItem>
-                )}
-                />
-            </div>
-             <FormField
-              control={form.control}
-              name="symptoms"
-              render={() => (
-                <FormItem>
-                  <div className="mb-4">
-                    <FormLabel className="flex items-center gap-1">
-                        <Stethoscope className="h-4 w-4 text-muted-foreground" />
-                        Symptoms (Optional)
-                    </FormLabel>
-                    <FormDescription>
-                      Select any symptoms you were experiencing at the time of reading.
-                    </FormDescription>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-2">
-                    {StaticSymptomsList.map((symptom) => (
-                      <FormField
-                        key={symptom}
-                        control={form.control}
-                        name="symptoms"
-                        render={({ field }) => {
-                          return (
-                            <FormItem
-                              key={symptom}
-                              className="flex flex-row items-start space-x-3 space-y-0"
-                            >
-                              <FormControl>
-                                <Checkbox
-                                  checked={field.value?.includes(symptom)}
-                                  onCheckedChange={(checked) => {
-                                    let symptômesValue = field.value ? [...field.value] : [];
-                                    if (symptom === "None") {
-                                        symptômesValue = checked ? ["None"] : [];
-                                    } else {
-                                        symptômesValue = symptômesValue.filter(s => s !== "None"); 
-                                        if (checked) {
-                                            if (!symptômesValue.includes(symptom)) {
-                                                symptômesValue.push(symptom);
-                                            }
-                                        } else {
-                                            symptômesValue = symptômesValue.filter(
-                                                (value) => value !== symptom
-                                            );
-                                        }
-                                    }
-                                    return field.onChange(symptômesValue);
-                                  }}
-                                  disabled={symptom !== "None" && field.value?.includes("None")}
-                                />
-                              </FormControl>
-                              <FormLabel className="font-normal">
-                                {symptom}
-                              </FormLabel>
-                            </FormItem>
-                          )
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </CardContent>
-          <CardFooter>
-            <Button type="submit" className="w-full md:w-auto" disabled={isLoadingOcr || form.formState.isSubmitting || isLoadingExternally}>
-              {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
-              {isEditing ? 'Update Reading' : 'Add Reading'}
-            </Button>
-          </CardFooter>
-        </form>
-      </Form>
-    </Card>
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)}>
+        {isEditing ? (
+          FormContent // Render directly without Card if editing (inside modal)
+        ) : (
+          <Card className="shadow-lg">
+            {FormContent}
+          </Card>
+        )}
+      </form>
+    </Form>
   );
 }
+
