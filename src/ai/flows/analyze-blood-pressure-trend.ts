@@ -12,7 +12,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import { BodyPositionOptions, RaceEthnicityOptions, GenderOptions, ExerciseContextOptions } from '@/lib/types';
+import { BodyPositionOptions, RaceEthnicityOptions, GenderOptions, ExerciseContextOptions, StaticSymptomsList } from '@/lib/types';
 
 // Schema for a single reading as received by the flow
 const FlowReadingSchema = z.object({
@@ -21,6 +21,7 @@ const FlowReadingSchema = z.object({
   diastolic: z.number().describe('Diastolic blood pressure reading.'),
   bodyPosition: z.enum(BodyPositionOptions).describe('Body position during the reading (e.g., Sitting, Standing).'),
   exerciseContext: z.enum(ExerciseContextOptions).describe('Context of exercise during the reading (e.g., Resting, Post-Exercise).'),
+  symptoms: z.array(z.enum(StaticSymptomsList)).optional().describe('Symptoms reported by the user at the time of reading.'),
 });
 
 // Public input schema for the flow
@@ -72,7 +73,7 @@ const prompt = ai.definePrompt({
 
   Blood Pressure Readings (most recent first):
   {{#each readings}}
-  - Date: {{formattedTimestamp}}, Systolic: {{systolic}}, Diastolic: {{diastolic}}, Position: {{bodyPosition}}, Exercise Context: {{exerciseContext}}
+  - Date: {{formattedTimestamp}}, Systolic: {{systolic}}, Diastolic: {{diastolic}}, Position: {{bodyPosition}}, Exercise Context: {{exerciseContext}}{{#if symptoms.length}}{{#unless (eq symptoms.0 "None")}}, Symptoms: {{#each symptoms}}{{.}}{{#unless @last}}, {{/unless}}{{/each}}{{/unless}}{{/if}}
   {{/each}}
 
   User Profile (if available):
@@ -87,7 +88,7 @@ const prompt = ai.definePrompt({
 
   **Overall Summary (Primary output for the 'summary' field):**
   1.  **Recent Reading Breakdown (If 1-2 readings provided, focus on the most recent. If many, briefly summarize the most recent before trend analysis):**
-      *   Start with a conversational interpretation of the most recent reading: "Your latest reading of {{readings.0.systolic}}/{{readings.0.diastolic}} mmHg, taken on {{readings.0.formattedTimestamp}} while {{readings.0.bodyPosition}} and in a '{{readings.0.exerciseContext}}' state, shows the following:"
+      *   Start with a conversational interpretation of the most recent reading: "Your latest reading of {{readings.0.systolic}}/{{readings.0.diastolic}} mmHg, taken on {{readings.0.formattedTimestamp}} while {{readings.0.bodyPosition}} and in a '{{readings.0.exerciseContext}}' state{{#if readings.0.symptoms.length}}{{#unless (eq readings.0.symptoms.0 "None")}}, while experiencing: {{#each readings.0.symptoms}}{{.}}{{#unless @last}}, {{/unless}}{{/each}}{{/unless}}{{/if}}, shows the following:"
       *   **Systolic Pressure ({{readings.0.systolic}} mmHg):** Explain what it means (e.g., "This is the pressure when your heart beats."). Classify it (e.g., "This is in the normal/elevated/stage 1 hypertension range.").
           *   Contextualize based on body position and exercise:
               *   If '{{readings.0.exerciseContext}}' is 'Post-Exercise': "It's common for systolic pressure to be higher after exercise as your body recovers."
@@ -95,12 +96,12 @@ const prompt = ai.definePrompt({
       *   **Diastolic Pressure ({{readings.0.diastolic}} mmHg):** Explain what it means (e.g., "This is the pressure when your heart rests between beats."). Classify it.
           *   Contextualize:
               *   If '{{readings.0.exerciseContext}}' is 'Post-Exercise': "A lower diastolic pressure can sometimes be seen after exercise as blood vessels relax. However, it should still be within a healthy range."
-      *   **(If applicable and pulse data were part of the input, which it is not in this app currently) Pulse:** Briefly comment. If 'Post-Exercise': "An elevated pulse is also expected after physical activity."
+      *   If '{{readings.0.symptoms.length}}' and not (eq readings.0.symptoms.0 "None"): Briefly acknowledge reported symptoms in relation to the reading, if appropriate (e.g., "The dizziness you reported could be related to this reading if it's unusually low for you, or it could be unrelated. It's worth monitoring.")
 
   2.  **Trend Analysis (If multiple readings are available):**
       *   Provide a plain-language summary of overall trends in systolic and diastolic pressures over the last 30 days.
       *   Mention consistency or variability. "Your readings over the past month show..."
-      *   Incorporate how the user's profile data (age, weight, gender, race/ethnicity, medicalConditions, medications), body position, and exercise context might influence overall blood pressure patterns, according to general health knowledge and AHA/CDC guidelines.
+      *   Incorporate how the user's profile data (age, weight, gender, race/ethnicity, medicalConditions, medications), body position, exercise context, and reported symptoms might influence overall blood pressure patterns, according to general health knowledge and AHA/CDC guidelines.
 
   **Flags (For the 'flags' field - array of strings):**
   *   List any flags based on the following AHA/CDC blood pressure categories. Apply these to individual readings or overall trends as appropriate.
@@ -110,18 +111,20 @@ const prompt = ai.definePrompt({
     - Hypertension Stage 2: Systolic ≥140 mmHg OR Diastolic ≥90 mmHg.
     - Hypertensive Crisis: Systolic >180 mmHg AND/OR Diastolic >120 mmHg. (If this is flagged for any recent reading, make this the MOST prominent flag and strongly advise seeking immediate medical attention in suggestions).
   *   Consider body position and exercise context: A 'Post-Exercise' reading might be flagged differently or have an explanatory note. For example, flag as "Elevated (Post-Exercise)" if it's high but expected within a reasonable range post-activity.
+  *   If Hypertensive Crisis symptoms (like chest pain, shortness of breath, blurred vision, severe headache) are reported alongside very high readings, emphasize this in the flags.
 
   **Suggestions & Next Steps (For the 'suggestions' field - array of strings):**
   1.  **"What to watch for":**
-      *   Based on the recent reading(s) and profile: "Given your reading, it’s good to be aware of symptoms like dizziness, lightheadedness, or unusual fatigue, especially [mention context e.g., 'when standing up quickly' or 'if readings are consistently low/high']. If you experience these, it's worth noting and discussing with your doctor."
-      *   If values are normal for the context (e.g. post-exercise): "If you feel fine and this pattern is typical for you after exercise, there’s likely no immediate cause for concern, but continue to monitor your blood pressure as usual."
+      *   Based on the recent reading(s), profile, and reported symptoms: "Given your reading and reported symptoms (if any), it’s good to be aware of [specific related symptoms like dizziness, lightheadedness, unusual fatigue, headache, etc.], especially [mention context e.g., 'when standing up quickly' or 'if readings are consistently low/high']. If you experience these, or if your reported symptoms worsen or persist, it's worth noting and discussing with your doctor."
+      *   If values are normal for the context (e.g. post-exercise) and no concerning symptoms: "If you feel fine and this pattern is typical for you after exercise, there’s likely no immediate cause for concern, but continue to monitor your blood pressure as usual."
   2.  **Personalized Lifestyle/Monitoring Advice:**
       *   Offer actionable suggestions for lifestyle adjustments (diet, exercise, stress), monitoring, or discussions with a healthcare provider.
-      *   These should be informed by the trends, flags, user profile, body position, and exercise context, aligning with general AHA/CDC recommendations.
-      *   Example: "If readings are often higher when standing, discussing this with your doctor might be helpful to rule out orthostatic concerns."
-      *   Example: "Maintaining consistent measurement practices (e.g., same time of day, same position when resting) can help in tracking your trends accurately."
+      *   These should be informed by the trends, flags, user profile, body position, exercise context, and reported symptoms, aligning with general AHA/CDC recommendations.
+      *   Example: "If readings are often higher when standing and you report dizziness, discussing this with your doctor might be helpful to rule out orthostatic concerns."
+      *   Example: "Maintaining consistent measurement practices (e.g., same time of day, same position when resting) can help in tracking your trends accurately. Consider noting any symptoms experienced alongside each reading in the app."
   3.  **Prompts for Further Engagement (include these as the last items in the suggestions array, phrased as considerations):**
-      *   "Consider comparing this reading to your previous ones to observe any patterns over time."
+      *   "You can consider viewing your [TREND_CHART] to see visual trends of your readings."
+      *   "It might be helpful to review your [READING_HISTORY] for more details on past entries and any patterns in reported symptoms."
       *   "For a deeper understanding of what these blood pressure numbers mean for your overall health, a discussion with your healthcare provider is always recommended."
 
   **VERY IMPORTANT:**
@@ -150,6 +153,7 @@ const analyzeBloodPressureTrendFlow = ai.defineFlow(
       return {
         ...reading,
         formattedTimestamp: formattedTimestamp,
+        symptoms: reading.symptoms || [], // Ensure symptoms is an array
       };
     });
 
@@ -173,7 +177,7 @@ const analyzeBloodPressureTrendFlow = ai.defineFlow(
     const disclaimer = "⚠️ This is not medical advice. Consult a healthcare professional for any concerns.";
     // Ensure disclaimer is the absolute last thing in summary
     if (summary.includes(disclaimer)) {
-        summary = summary.replace(disclaimer, "").trim(); // Remove existing instances
+        summary = summary.replace(disclaimer, "").trim(); 
     }
     summary = summary.trim() + (summary.trim().endsWith('.') ? ' ' : '. ') + disclaimer;
 

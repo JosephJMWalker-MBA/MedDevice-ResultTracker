@@ -2,8 +2,9 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { type BloodPressureReading, type BodyPosition, type ExerciseContext, type TrendAnalysisResult } from '@/lib/types';
-import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { type BloodPressureReading, type BodyPosition, type ExerciseContext, type TrendAnalysisResult, type Symptom } from '@/lib/types';
+import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell, Stethoscope } from 'lucide-react';
 import { format } from 'date-fns';
 import Papa from 'papaparse';
 import jsPDF from 'jspdf';
@@ -41,7 +42,7 @@ const getExerciseContextIcon = (context: ExerciseContext): React.ElementType => 
     case 'Resting': return Dumbbell;
     case 'Pre-Exercise': return Zap;
     case 'During Exercise': return Bike;
-    case 'Post-Exercise': return ThermometerSun;
+    case 'Post-Exercise': return ThermometerSun; // Changed icon for post-exercise
     default: return HelpCircleIcon;
   }
 };
@@ -63,6 +64,7 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
       Diastolic: r.diastolic,
       'Body Position': r.bodyPosition,
       'Exercise Context': r.exerciseContext,
+      'Symptoms': r.symptoms && r.symptoms.length > 0 && r.symptoms[0] !== "None" ? r.symptoms.join(', ') : '',
     }));
 
     let csvContent = Papa.unparse(dataToExport);
@@ -109,17 +111,18 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
         doc.text('Readings History', 14, startY);
         startY += 7;
 
-        const tableColumn = ["Date", "Time", "Systolic (mmHg)", "Diastolic (mmHg)", "Body Position", "Exercise Context"];
+        const tableColumn = ["Date", "Time", "SYS", "DIA", "Position", "Exercise", "Symptoms"];
         const tableRows: any[][] = [];
 
         readings.forEach(reading => {
         const readingData = [
             format(new Date(reading.timestamp), 'yyyy-MM-dd'),
-            format(new Date(reading.timestamp), 'HH:mm:ss'),
+            format(new Date(reading.timestamp), 'HH:mm'),
             reading.systolic,
             reading.diastolic,
             reading.bodyPosition,
             reading.exerciseContext,
+            reading.symptoms && reading.symptoms.length > 0 && reading.symptoms[0] !== "None" ? reading.symptoms.join(', ') : '',
         ];
         tableRows.push(readingData);
         });
@@ -129,22 +132,21 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
             body: tableRows,
             startY: startY,
             theme: 'grid',
-            headStyles: { fillColor: [34, 102, 153] }, // Primary color from theme (approx)
+            headStyles: { fillColor: [34, 102, 153] },
             didDrawPage: (data: any) => {
-                // Footer with disclaimer on each page
                 doc.setFontSize(8);
                 const pageHeight = doc.internal.pageSize.getHeight();
                 const disclaimerLines = doc.splitTextToSize(disclaimerText, doc.internal.pageSize.getWidth() - data.settings.margin.left - data.settings.margin.right);
-                doc.text(disclaimerLines, data.settings.margin.left, pageHeight - 10 - (disclaimerLines.length -1) * 3.5 ); // Adjust Y for multi-line
+                doc.text(disclaimerLines, data.settings.margin.left, pageHeight - 10 - (disclaimerLines.length -1) * 3.5 );
             },
-            margin: { bottom: 20 } // Ensure space for footer
+            margin: { bottom: 20 } 
         });
         startY = (doc as any).lastAutoTable.finalY + 10;
     }
 
 
     if (analysis) {
-        if (startY > doc.internal.pageSize.getHeight() - 30) { // Check if new page is needed before analysis
+        if (startY > doc.internal.pageSize.getHeight() - 30) { 
             doc.addPage();
             startY = 20;
         }
@@ -210,7 +212,11 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
         body += "==== Recent Readings (up to 10) ====\n";
         const recentReadings = readings.slice(0, 10);
         recentReadings.forEach(r => {
-            body += `${format(new Date(r.timestamp), 'yyyy-MM-dd HH:mm')} - SYS: ${r.systolic}, DIA: ${r.diastolic}, Position: ${r.bodyPosition}, Exercise: ${r.exerciseContext}\n`;
+            body += `${format(new Date(r.timestamp), 'yyyy-MM-dd HH:mm')} - SYS: ${r.systolic}, DIA: ${r.diastolic}, Pos: ${r.bodyPosition}, Ex: ${r.exerciseContext}`;
+            if (r.symptoms && r.symptoms.length > 0 && r.symptoms[0] !== "None") {
+                body += `, Symptoms: ${r.symptoms.join(', ')}`;
+            }
+            body += '\n';
         });
         body += "\n";
     }
@@ -268,11 +274,11 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
           <TableHeader>
             <TableRow>
               <TableHead className="w-[150px]">Date & Time</TableHead>
-              <TableHead>Systolic (mmHg)</TableHead>
-              <TableHead>Diastolic (mmHg)</TableHead>
+              <TableHead>SYS/DIA</TableHead>
               <TableHead>Category</TableHead>
               <TableHead className="hidden sm:table-cell">Position</TableHead>
               <TableHead className="hidden md:table-cell">Exercise</TableHead>
+              <TableHead className="hidden lg:table-cell">Symptoms</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -286,23 +292,33 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
                     <div>{format(new Date(reading.timestamp), 'MMM dd, yyyy')}</div>
                     <div className="text-xs text-muted-foreground">{format(new Date(reading.timestamp), 'p')}</div>
                   </TableCell>
-                  <TableCell className="font-medium">{reading.systolic}</TableCell>
-                  <TableCell className="font-medium">{reading.diastolic}</TableCell>
+                  <TableCell className="font-medium">{reading.systolic}/{reading.diastolic}</TableCell>
                   <TableCell className={`${colorClass} font-medium flex items-center gap-1`}>
                     <BPCategoryIcon className="h-4 w-4"/> {category}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
                      <div className="flex items-center gap-1 text-sm" title={reading.bodyPosition}>
                         <PositionIcon className="h-4 w-4 shrink-0 text-muted-foreground"/>
-                        <span>{reading.bodyPosition}</span>
+                        <span className="truncate max-w-[80px]">{reading.bodyPosition}</span>
                       </div>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                      <div className="flex items-center gap-1 text-sm" title={reading.exerciseContext}>
                         <ExerciseIcon className="h-4 w-4 shrink-0 text-muted-foreground"/>
-                        <span>{reading.exerciseContext}</span>
+                        <span className="truncate max-w-[100px]">{reading.exerciseContext}</span>
                       </div>
                   </TableCell>
+                   <TableCell className="hidden lg:table-cell text-xs">
+                    {reading.symptoms && reading.symptoms.length > 0 && reading.symptoms[0] !== "None" ? (
+                        <div className="flex flex-wrap gap-1">
+                        {reading.symptoms.map(symptom => (
+                            <Badge key={symptom} variant="outline" className="text-xs px-1.5 py-0.5">{symptom}</Badge>
+                        ))}
+                        </div>
+                    ) : (
+                        <span className="text-muted-foreground">N/A</span>
+                    )}
+                    </TableCell>
                 </TableRow>
               );
             })}
@@ -327,4 +343,3 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
     </Card>
   );
 }
-

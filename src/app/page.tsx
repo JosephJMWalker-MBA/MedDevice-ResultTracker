@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile } from '@/lib/types';
+import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile, Symptom } from '@/lib/types';
 import { BodyPositionOptions, ExerciseContextOptions } from '@/lib/types';
 import { callAnalyzeTrendAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -11,7 +11,7 @@ import ReadingForm from '@/components/blood-pressure/reading-form';
 import TrendAnalysisDisplay from '@/components/blood-pressure/trend-analysis-display';
 import ReadingList from '@/components/blood-pressure/reading-list';
 import DisclaimerAlert from '@/components/blood-pressure/disclaimer-alert';
-import BpChart from '@/components/blood-pressure/bp-chart'; // Import the new chart component
+import BpChart from '@/components/blood-pressure/bp-chart';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart3, TrendingUp } from 'lucide-react';
@@ -33,7 +33,7 @@ export default function HomePage() {
 
     const recentReadings = currentReadings
       .filter(r => new Date(r.timestamp) >= thirtyDaysAgo)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // AI expects most recent first
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     if (recentReadings.length === 0) {
       setAnalysis({
@@ -54,6 +54,7 @@ export default function HomePage() {
           diastolic: r.diastolic,
           bodyPosition: r.bodyPosition || BodyPositionOptions[0],
           exerciseContext: r.exerciseContext || ExerciseContextOptions[0],
+          symptoms: r.symptoms || [],
         })),
         ...(profile?.age && { age: profile.age }),
         ...(profile?.weightLbs && { weightLbs: profile.weightLbs }),
@@ -90,7 +91,8 @@ export default function HomePage() {
           diastolic: typeof reading.diastolic === 'number' ? reading.diastolic : 0,
           bodyPosition: BodyPositionOptions.includes(reading.bodyPosition) ? reading.bodyPosition : BodyPositionOptions[0],
           exerciseContext: ExerciseContextOptions.includes(reading.exerciseContext) ? reading.exerciseContext : ExerciseContextOptions[0],
-        })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // sort by date descending for display
+          symptoms: Array.isArray(reading.symptoms) ? reading.symptoms : [], // Heal symptoms
+        })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       }
       setReadings(loadedReadings);
 
@@ -136,6 +138,7 @@ export default function HomePage() {
       diastolic: data.diastolic,
       bodyPosition: data.bodyPosition,
       exerciseContext: data.exerciseContext,
+      symptoms: data.symptoms || [],
     };
     const updatedReadings = [...readings, newReading].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setReadings(updatedReadings);
@@ -150,7 +153,7 @@ export default function HomePage() {
       />
 
       {isInitialLoad || (readings.length === 0 && !isLoadingAnalysis) ? (
-        <Card className="shadow-lg">
+        <Card className="shadow-lg" id="bp-chart-card">
           <CardHeader>
             <CardTitle className="text-2xl flex items-center gap-2">
                 <TrendingUp className="h-7 w-7 text-primary" />
@@ -163,7 +166,7 @@ export default function HomePage() {
           </CardContent>
         </Card>
       ) : readings.length > 0 ? (
-        <BpChart readings={readings} />
+        <div id="bp-chart-card"><BpChart readings={readings} /></div>
       ): null}
 
 
@@ -188,7 +191,7 @@ export default function HomePage() {
       )}
 
       {isInitialLoad ? (
-        <Card className="shadow-lg">
+        <Card className="shadow-lg" id="reading-list-card">
           <CardHeader>
              <CardTitle className="text-2xl">Readings History</CardTitle>
              <CardDescription>Loading your past readings...</CardDescription>
@@ -198,11 +201,10 @@ export default function HomePage() {
           </CardContent>
         </Card>
       ) : (
-         <ReadingList readings={readings} analysis={analysis} />
+         <div id="reading-list-card"><ReadingList readings={readings} analysis={analysis} /></div>
       )}
 
       <DisclaimerAlert />
     </div>
   );
 }
-

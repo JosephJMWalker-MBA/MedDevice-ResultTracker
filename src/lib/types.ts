@@ -9,13 +9,17 @@ export type BodyPosition = typeof BodyPositionOptions[number];
 export const ExerciseContextOptions = ["Resting", "Pre-Exercise", "During Exercise", "Post-Exercise"] as const;
 export type ExerciseContext = typeof ExerciseContextOptions[number];
 
+export const StaticSymptomsList = ["Dizzy", "Headache", "Lightheaded", "Fatigue", "Shortness of Breath", "Chest Pain", "Swelling", "Blurred Vision", "None"] as const;
+export type Symptom = typeof StaticSymptomsList[number];
+
 export interface BloodPressureReading {
   id: string;
   timestamp: string;
   systolic: number;
   diastolic: number;
   bodyPosition: BodyPosition;
-  exerciseContext: ExerciseContext; // Added
+  exerciseContext: ExerciseContext;
+  symptoms?: Symptom[]; // Added
 }
 
 export type OcrData = ExtractBloodPressureDataOutput;
@@ -39,7 +43,8 @@ export const ReadingFormSchema = z.object({
   systolic: z.coerce.number({invalid_type_error: "Systolic must be a number"}).positive("Systolic pressure must be positive"),
   diastolic: z.coerce.number({invalid_type_error: "Diastolic must be a number"}).positive("Diastolic pressure must be positive"),
   bodyPosition: z.enum(BodyPositionOptions, { required_error: "Body position is required." }),
-  exerciseContext: z.enum(ExerciseContextOptions, { required_error: "Exercise context is required." }), // Added
+  exerciseContext: z.enum(ExerciseContextOptions, { required_error: "Exercise context is required." }),
+  symptoms: z.array(z.enum(StaticSymptomsList)).optional(), // Added
 });
 
 export type ReadingFormData = z.infer<typeof ReadingFormSchema>;
@@ -73,17 +78,18 @@ export interface UserProfile {
   weightLbs?: number | null;
   raceEthnicity?: RaceEthnicity;
   gender?: Gender;
-  medicalConditions?: string[];
+  medicalConditions?: string[]; // Stored as array
   medications?: string | null;
   preferredReminderTime?: string | null;
 }
 
+// Schema for form data validation
 export const UserProfileSchema = z.object({
   age: z.coerce.number().positive("Age must be a positive number.").optional().nullable(),
   weightLbs: z.coerce.number().positive("Weight must be a positive number.").optional().nullable(),
   raceEthnicity: z.enum(RaceEthnicityOptions).optional().nullable(),
   gender: z.enum(GenderOptions).optional().nullable(),
-  medicalConditions: z.string().transform(value => value ? value.split(',').map(item => item.trim()).filter(item => item.length > 0) : []).optional().nullable(),
+  medicalConditions: z.string().optional().nullable(), // Input as string, converted on save/load
   medications: z.string().optional().nullable(),
   preferredReminderTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format. Use HH:MM.")
     .optional()
@@ -91,8 +97,9 @@ export const UserProfileSchema = z.object({
 });
 
 export type UserProfileFormData = z.infer<typeof UserProfileSchema>;
-const UserProfileFormDataSchemaInternal = UserProfileSchema.extend({
- medicalConditions: z.string().optional().nullable()
-});
-export type UserProfileFormDataInternal = z.infer<typeof UserProfileFormDataSchemaInternal>;
 
+// Internal representation type for when medicalConditions is a string (e.g., in form state before submission)
+// This helps distinguish from the UserProfile where it's an array.
+export type UserProfileFormDataInternal = UserProfileFormData & {
+  medicalConditions?: string | null; // Explicitly string for Textarea
+};

@@ -1,7 +1,9 @@
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { type TrendAnalysisResult } from '@/lib/types';
-import { Lightbulb, ListChecks, Info, AlertTriangle } from 'lucide-react';
+import { Lightbulb, ListChecks, Info, AlertTriangle, AreaChart, ListOrdered } from 'lucide-react';
 
 interface TrendAnalysisDisplayProps {
   analysis: TrendAnalysisResult | null;
@@ -26,6 +28,53 @@ export default function TrendAnalysisDisplay({ analysis }: TrendAnalysisDisplayP
 
   const hasWarningDisclaimer = analysis.summary.includes("⚠️") || analysis.suggestions.some(s => s.includes("⚠️"));
 
+  const handleSuggestionClick = (action: 'TREND_CHART' | 'READING_HISTORY') => {
+    let elementId = '';
+    if (action === 'TREND_CHART') {
+      elementId = 'bp-chart-card';
+    } else if (action === 'READING_HISTORY') {
+      elementId = 'reading-list-card';
+    }
+
+    const element = document.getElementById(elementId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const renderSuggestion = (suggestion: string, index: number) => {
+    const trendChartRegex = /\[TREND_CHART\]/;
+    const readingHistoryRegex = /\[READING_HISTORY\]/;
+
+    if (trendChartRegex.test(suggestion)) {
+      const parts = suggestion.split(trendChartRegex);
+      return (
+        <li key={index} className="whitespace-pre-wrap">
+          {parts[0]}
+          <Button variant="link" className="p-0 h-auto font-normal text-base inline text-primary hover:underline" onClick={() => handleSuggestionClick('TREND_CHART')}>
+            viewing your trend chart
+          </Button>
+          {parts[1]}
+        </li>
+      );
+    }
+
+    if (readingHistoryRegex.test(suggestion)) {
+      const parts = suggestion.split(readingHistoryRegex);
+      return (
+        <li key={index} className="whitespace-pre-wrap">
+          {parts[0]}
+          <Button variant="link" className="p-0 h-auto font-normal text-base inline text-primary hover:underline" onClick={() => handleSuggestionClick('READING_HISTORY')}>
+            review your reading history
+          </Button>
+          {parts[1]}
+        </li>
+      );
+    }
+    return <li key={index} className="whitespace-pre-wrap">{suggestion}</li>;
+  };
+
+
   return (
     <Card className="shadow-lg border-primary/50">
       <CardHeader>
@@ -46,7 +95,7 @@ export default function TrendAnalysisDisplay({ analysis }: TrendAnalysisDisplayP
             <h3 className="text-lg font-semibold mb-2 flex items-center gap-2"><ListChecks className="h-5 w-5 text-accent" />Flags</h3>
             <div className="flex flex-wrap gap-2">
               {analysis.flags.map((flag, index) => (
-                <Badge key={index} variant={flag.toLowerCase().includes("hypertension") ? "destructive" : "secondary"} className="text-sm px-3 py-1">
+                <Badge key={index} variant={flag.toLowerCase().includes("hypertension") || flag.toLowerCase().includes("crisis") ? "destructive" : "secondary"} className="text-sm px-3 py-1">
                   {flag}
                 </Badge>
               ))}
@@ -58,9 +107,7 @@ export default function TrendAnalysisDisplay({ analysis }: TrendAnalysisDisplayP
           <div>
             <h3 className="text-lg font-semibold mb-2 flex items-center gap-2"><Lightbulb className="h-5 w-5 text-accent" />Personalized Suggestions</h3>
             <ul className="list-disc list-inside space-y-1 text-foreground/90 leading-relaxed">
-              {analysis.suggestions.map((suggestion, index) => (
-                <li key={index} className="whitespace-pre-wrap">{suggestion}</li>
-              ))}
+              {analysis.suggestions.map(renderSuggestion)}
             </ul>
           </div>
         )}

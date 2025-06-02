@@ -3,17 +3,18 @@
 
 import type { ChangeEvent } from 'react';
 import { useState, useEffect } from 'react';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ReadingFormData, ReadingFormSchema, type OcrData, BodyPositionOptions, ExerciseContextOptions } from '@/lib/types';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ReadingFormData, ReadingFormSchema, type OcrData, BodyPositionOptions, ExerciseContextOptions, StaticSymptomsList, type Symptom } from '@/lib/types';
 import { callExtractDataAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileScan, Loader2, CheckCircle, AlertCircle, CalendarClockIcon, Bike } from 'lucide-react';
+import { UploadCloud, FileScan, Loader2, CheckCircle, AlertCircle, CalendarClockIcon, Bike, Stethoscope } from 'lucide-react';
 import Image from 'next/image';
 import ExifReader from 'exifreader';
 
@@ -46,7 +47,8 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
       systolic: '',
       diastolic: '',
       bodyPosition: BodyPositionOptions[0],
-      exerciseContext: ExerciseContextOptions[0], // Default to "Resting"
+      exerciseContext: ExerciseContextOptions[0],
+      symptoms: [],
       imageFile: undefined,
     },
   });
@@ -106,13 +108,14 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
 
   const onSubmit: SubmitHandler<ReadingFormData> = (data) => {
     onReadingAdded(data);
-    form.reset({ // Reset to initial default values
+    form.reset({ 
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
       systolic: '',
       diastolic: '',
-      bodyPosition: BodyPositionOptions[0], // Explicitly reset to the first option
-      exerciseContext: ExerciseContextOptions[0], // Explicitly reset
+      bodyPosition: BodyPositionOptions[0], 
+      exerciseContext: ExerciseContextOptions[0],
+      symptoms: [],
       imageFile: undefined,
     });
     setImagePreview(null);
@@ -244,7 +247,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
                 render={({ field }) => (
                     <FormItem>
                     <FormLabel className="text-base">Body Position</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} /* Use field.value to control component */ >
+                    <Select onValueChange={field.onChange} value={field.value} >
                         <FormControl>
                         <SelectTrigger>
                             <SelectValue placeholder="Select body position" />
@@ -269,7 +272,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
                         <Bike className="h-4 w-4 text-muted-foreground" />
                         Exercise Context
                     </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}  /* Use field.value to control component */ >
+                    <Select onValueChange={field.onChange} value={field.value} >
                         <FormControl>
                         <SelectTrigger>
                             <SelectValue placeholder="Select exercise context" />
@@ -286,6 +289,70 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
                 )}
                 />
             </div>
+             <FormField
+              control={form.control}
+              name="symptoms"
+              render={() => (
+                <FormItem>
+                  <div className="mb-4">
+                    <FormLabel className="text-base flex items-center gap-1">
+                        <Stethoscope className="h-4 w-4 text-muted-foreground" />
+                        Symptoms (Optional)
+                    </FormLabel>
+                    <FormDescription>
+                      Select any symptoms you were experiencing at the time of reading.
+                    </FormDescription>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-2">
+                    {StaticSymptomsList.map((symptom) => (
+                      <FormField
+                        key={symptom}
+                        control={form.control}
+                        name="symptoms"
+                        render={({ field }) => {
+                          return (
+                            <FormItem
+                              key={symptom}
+                              className="flex flex-row items-start space-x-3 space-y-0"
+                            >
+                              <FormControl>
+                                <Checkbox
+                                  checked={field.value?.includes(symptom)}
+                                  onCheckedChange={(checked) => {
+                                    let symptômesValue = field.value ? [...field.value] : [];
+                                    if (symptom === "None") {
+                                        symptômesValue = checked ? ["None"] : [];
+                                    } else {
+                                        symptômesValue = symptômesValue.filter(s => s !== "None"); // Remove "None" if other selected
+                                        if (checked) {
+                                            if (!symptômesValue.includes(symptom)) {
+                                                symptômesValue.push(symptom);
+                                            }
+                                        } else {
+                                            symptômesValue = symptômesValue.filter(
+                                                (value) => value !== symptom
+                                            );
+                                        }
+                                    }
+                                    return field.onChange(symptômesValue);
+                                  }}
+                                  disabled={symptom !== "None" && field.value?.includes("None")} // Disable others if "None" is checked
+                                />
+                              </FormControl>
+                              <FormLabel className="font-normal">
+                                {symptom}
+                              </FormLabel>
+                            </FormItem>
+                          )
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
 
           </CardContent>
           <CardFooter>
