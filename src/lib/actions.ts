@@ -1,4 +1,3 @@
-
 'use server';
 
 import { extractBloodPressureData, type ExtractBloodPressureDataInput, type ExtractBloodPressureDataOutput } from '@/ai/flows/extract-blood-pressure-data';
@@ -14,8 +13,8 @@ export async function callExtractDataAction(photoDataUri: string): Promise<Extra
     return {
       date: result.date || "",
       time: result.time || "",
-      systolic: result.systolic || 0, 
-      diastolic: result.diastolic || 0, 
+      systolic: result.systolic || 0,
+      diastolic: result.diastolic || 0,
     };
   } catch (error) {
     console.error("Error in callExtractDataAction:", error);
@@ -32,8 +31,6 @@ export async function callAnalyzeTrendAction(input: AnalyzeBloodPressureTrendInp
     };
   }
   try {
-    // The input should now correctly contain profile.medications if available,
-    // and individual readings will not have a medications field.
     return await analyzeBloodPressureTrend(input);
   } catch (error) {
     console.error("Error in callAnalyzeTrendAction:", error);

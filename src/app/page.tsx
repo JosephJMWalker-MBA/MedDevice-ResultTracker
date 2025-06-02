@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile } from '@/lib/types';
-import { BodyPositionOptions } from '@/lib/types';
+import { BodyPositionOptions, ExerciseContextOptions } from '@/lib/types'; // Added ExerciseContextOptions
 import { callAnalyzeTrendAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 
@@ -32,7 +32,7 @@ export default function HomePage() {
 
     const recentReadings = currentReadings
       .filter(r => new Date(r.timestamp) >= thirtyDaysAgo)
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()); 
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     if (recentReadings.length === 0) {
       setAnalysis({
@@ -51,17 +51,17 @@ export default function HomePage() {
           timestamp: r.timestamp,
           systolic: r.systolic,
           diastolic: r.diastolic,
-          bodyPosition: r.bodyPosition || BodyPositionOptions[0], 
-          // medications removed from per-reading, will come from profile
+          bodyPosition: r.bodyPosition || BodyPositionOptions[0],
+          exerciseContext: r.exerciseContext || ExerciseContextOptions[0], // Added
         })),
         ...(profile?.age && { age: profile.age }),
         ...(profile?.weightLbs && { weightLbs: profile.weightLbs }),
         ...(profile?.gender && { gender: profile.gender }),
         ...(profile?.raceEthnicity && { raceEthnicity: profile.raceEthnicity }),
         ...(profile?.medicalConditions && profile.medicalConditions.length > 0 && { medicalConditions: profile.medicalConditions }),
-        ...(profile?.medications && { medications: profile.medications }), // Pass medications from profile
+        ...(profile?.medications && { medications: profile.medications }),
       };
-      
+
       const result = await callAnalyzeTrendAction(analysisPayload);
       setAnalysis(result);
     } catch (error: any) {
@@ -72,7 +72,7 @@ export default function HomePage() {
       setIsLoadingAnalysis(false);
     }
   }, [toast]);
-  
+
   useEffect(() => {
     setIsInitialLoad(true);
     let loadedReadings: BloodPressureReading[] = [];
@@ -88,7 +88,7 @@ export default function HomePage() {
           systolic: typeof reading.systolic === 'number' ? reading.systolic : 0,
           diastolic: typeof reading.diastolic === 'number' ? reading.diastolic : 0,
           bodyPosition: BodyPositionOptions.includes(reading.bodyPosition) ? reading.bodyPosition : BodyPositionOptions[0],
-          // medications: typeof reading.medications === 'string' ? reading.medications : (Array.isArray(reading.medications) ? reading.medications.join(', ') : ''), // Old medications field ignored
+          exerciseContext: ExerciseContextOptions.includes(reading.exerciseContext) ? reading.exerciseContext : ExerciseContextOptions[0], // Added for healing
         })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       }
       setReadings(loadedReadings);
@@ -104,20 +104,20 @@ export default function HomePage() {
     } finally {
       setIsInitialLoad(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps 
-  }, []); 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   useEffect(() => {
-    if (!isInitialLoad) { 
+    if (!isInitialLoad) {
         triggerAnalysis(readings, userProfile);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps  
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readings, userProfile, isInitialLoad]);
 
 
   useEffect(() => {
-    if (!isInitialLoad && readings) { 
+    if (!isInitialLoad && readings) {
       try {
         localStorage.setItem('bpReadings', JSON.stringify(readings));
       } catch (error) {
@@ -134,7 +134,7 @@ export default function HomePage() {
       systolic: data.systolic,
       diastolic: data.diastolic,
       bodyPosition: data.bodyPosition,
-      // medications: data.medications || '', // Medications removed from here
+      exerciseContext: data.exerciseContext, // Added
     };
     const updatedReadings = [...readings, newReading].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setReadings(updatedReadings);
@@ -142,8 +142,8 @@ export default function HomePage() {
 
   return (
     <div className="container mx-auto max-w-4xl p-4 md:p-8 space-y-8">
-      <ReadingForm 
-        onReadingAdded={handleAddReading} 
+      <ReadingForm
+        onReadingAdded={handleAddReading}
         isLoadingOcrParent={isLoadingOcr}
         setIsLoadingOcrParent={setIsLoadingOcr}
       />
@@ -167,7 +167,7 @@ export default function HomePage() {
       ) : (
         analysis && <TrendAnalysisDisplay analysis={analysis} />
       )}
-      
+
       {isInitialLoad ? (
         <Card className="shadow-lg">
           <CardHeader>
@@ -179,9 +179,9 @@ export default function HomePage() {
           </CardContent>
         </Card>
       ) : (
-         <ReadingList readings={readings} />
+         <ReadingList readings={readings} analysis={analysis} />
       )}
-     
+
       <DisclaimerAlert />
     </div>
   );

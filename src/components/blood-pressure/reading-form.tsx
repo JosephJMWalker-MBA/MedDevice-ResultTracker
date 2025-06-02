@@ -7,15 +7,13 @@ import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// import { Label } from '@/components/ui/label'; // Label is part of FormLabel
-// import { Textarea } from '@/components/ui/textarea'; // Medications textarea removed
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ReadingFormData, ReadingFormSchema, type OcrData, BodyPositionOptions } from '@/lib/types';
+import { ReadingFormData, ReadingFormSchema, type OcrData, BodyPositionOptions, ExerciseContextOptions } from '@/lib/types';
 import { callExtractDataAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileScan, Loader2, CheckCircle, AlertCircle, CalendarClockIcon } from 'lucide-react';
+import { UploadCloud, FileScan, Loader2, CheckCircle, AlertCircle, CalendarClockIcon, Bike } from 'lucide-react';
 import Image from 'next/image';
 import ExifReader from 'exifreader';
 
@@ -26,7 +24,6 @@ interface ReadingFormProps {
   setIsLoadingOcrParent: (loading: boolean) => void;
 }
 
-// Utility function to convert File to Data URI
 const fileToDataUri = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -46,10 +43,10 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-      systolic: '', 
+      systolic: '',
       diastolic: '',
-      bodyPosition: BodyPositionOptions[0], // Default to "Sitting"
-      // medications field removed
+      bodyPosition: BodyPositionOptions[0],
+      exerciseContext: ExerciseContextOptions[0], // Default to "Resting"
       imageFile: undefined,
     },
   });
@@ -68,8 +65,8 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
         if (dateTimeOriginal && typeof dateTimeOriginal === 'string') {
           const parts = dateTimeOriginal.split(' ');
           if (parts.length === 2) {
-            const dateFromExif = parts[0].replace(/:/g, '-'); // YYYY-MM-DD
-            const timeFromExif = parts[1].substring(0, 5); // HH:MM
+            const dateFromExif = parts[0].replace(/:/g, '-');
+            const timeFromExif = parts[1].substring(0, 5);
             form.setValue('date', dateFromExif);
             form.setValue('time', timeFromExif);
             toast({ title: 'EXIF Data Applied', description: 'Date and time auto-filled from image metadata.', className: 'bg-blue-50 border-blue-300 text-blue-800 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300 [&>svg]:text-blue-600' });
@@ -84,13 +81,13 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
       try {
         const dataUri = await fileToDataUri(file);
         const extractedData: OcrData = await callExtractDataAction(dataUri);
-        
+
         if (extractedData.date && !form.getValues('date')) form.setValue('date', extractedData.date);
         if (extractedData.time && !form.getValues('time')) form.setValue('time', extractedData.time);
-        
-        if (extractedData.systolic) form.setValue('systolic', extractedData.systolic as any); // Ensure string for form if needed
-        if (extractedData.diastolic) form.setValue('diastolic', extractedData.diastolic as any); // Ensure string for form if needed
-        
+
+        if (extractedData.systolic) form.setValue('systolic', extractedData.systolic as any);
+        if (extractedData.diastolic) form.setValue('diastolic', extractedData.diastolic as any);
+
         if (extractedData.systolic || extractedData.diastolic) {
             toast({ title: 'OCR Success', description: 'Systolic/Diastolic data extracted. Please verify.' });
         }
@@ -109,24 +106,24 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
 
   const onSubmit: SubmitHandler<ReadingFormData> = (data) => {
     onReadingAdded(data);
-    form.reset({
+    form.reset({ // Reset to initial default values
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-      systolic: '', 
+      systolic: '',
       diastolic: '',
-      bodyPosition: BodyPositionOptions[0],
-      // medications field removed
-      imageFile: undefined, 
+      bodyPosition: BodyPositionOptions[0], // Explicitly reset to the first option
+      exerciseContext: ExerciseContextOptions[0], // Explicitly reset
+      imageFile: undefined,
     });
     setImagePreview(null);
     setOcrProcessingStatus('idle');
     const fileInput = document.getElementById('imageFile') as HTMLInputElement | null;
     if (fileInput) {
-        fileInput.value = ''; 
+        fileInput.value = '';
     }
     toast({ title: 'Reading Added', description: 'Your blood pressure reading has been saved.' });
   };
-  
+
   useEffect(() => {
     if (!form.getValues('date')) {
       form.setValue('date', new Date().toISOString().split('T')[0]);
@@ -152,16 +149,16 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
             <FormField
               control={form.control}
               name="imageFile"
-              render={({ field }) => ( 
+              render={({ field }) => (
                 <FormItem>
                   <FormLabel htmlFor="imageFile" className="text-base">Upload Image (Optional)</FormLabel>
                   <FormControl>
-                    <Input 
-                      id="imageFile" 
-                      type="file" 
-                      accept="image/*" 
+                    <Input
+                      id="imageFile"
+                      type="file"
+                      accept="image/*"
                       onChange={(e) => {
-                        field.onChange(e.target.files); 
+                        field.onChange(e.target.files);
                         handleImageChange(e);
                       }}
                       className="file:text-primary file:font-semibold hover:file:bg-primary/10"
@@ -199,7 +196,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="time"
-                render={({ field }) => ( 
+                render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-base">Time</FormLabel>
                     <FormControl>
@@ -215,7 +212,7 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
               <FormField
                 control={form.control}
                 name="systolic"
-                render={({ field }) => ( 
+                render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-base">Systolic (SYS)</FormLabel>
                     <FormControl>
@@ -239,31 +236,56 @@ export default function ReadingForm({ onReadingAdded, isLoadingOcrParent, setIsL
                 )}
               />
             </div>
-            
-            <FormField
-              control={form.control}
-              name="bodyPosition"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-base">Body Position</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select body position" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {BodyPositionOptions.map(option => (
-                        <SelectItem key={option} value={option}>{option}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
-            {/* Medications FormField removed from here */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField
+                control={form.control}
+                name="bodyPosition"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel className="text-base">Body Position</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} /* Use field.value to control component */ >
+                        <FormControl>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select body position" />
+                        </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                        {BodyPositionOptions.map(option => (
+                            <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                        </SelectContent>
+                    </Select>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+                <FormField
+                control={form.control}
+                name="exerciseContext"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel className="text-base flex items-center gap-1">
+                        <Bike className="h-4 w-4 text-muted-foreground" />
+                        Exercise Context
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}  /* Use field.value to control component */ >
+                        <FormControl>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select exercise context" />
+                        </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                        {ExerciseContextOptions.map(option => (
+                            <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                        </SelectContent>
+                    </Select>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+            </div>
 
           </CardContent>
           <CardFooter>

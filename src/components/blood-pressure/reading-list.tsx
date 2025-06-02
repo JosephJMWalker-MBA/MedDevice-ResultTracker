@@ -2,17 +2,18 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { type BloodPressureReading, type BodyPosition } from '@/lib/types';
-import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2 } from 'lucide-react'; // Pill icon removed
+import { type BloodPressureReading, type BodyPosition, type ExerciseContext, type TrendAnalysisResult } from '@/lib/types';
+import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell } from 'lucide-react'; // Added Dumbbell for Resting
 import { format } from 'date-fns';
 import Papa from 'papaparse';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable'; // Import for the autoTable plugin
+import 'jspdf-autotable';
 import { useToast } from '@/hooks/use-toast';
 
 
 interface ReadingListProps {
   readings: BloodPressureReading[];
+  analysis: TrendAnalysisResult | null;
 }
 
 const getBpCategory = (systolic: number, diastolic: number): { category: string; colorClass: string; Icon: React.ElementType } => {
@@ -31,17 +32,27 @@ const getBodyPositionIcon = (position: BodyPosition): React.ElementType => {
     case 'Standing': return PersonStanding;
     case 'Lying Down': return BedDouble;
     case 'Other': return HelpCircleIcon;
-    default: return Activity; 
+    default: return Activity;
+  }
+};
+
+const getExerciseContextIcon = (context: ExerciseContext): React.ElementType => {
+  switch (context) {
+    case 'Resting': return Dumbbell; // Changed to Dumbbell for resting/inactive
+    case 'Pre-Exercise': return Zap;
+    case 'During Exercise': return Bike;
+    case 'Post-Exercise': return ThermometerSun;
+    default: return HelpCircleIcon;
   }
 };
 
 
-export default function ReadingList({ readings }: ReadingListProps) {
+export default function ReadingList({ readings, analysis }: ReadingListProps) {
   const { toast } = useToast();
 
   const exportToCSV = () => {
-    if (readings.length === 0) {
-      toast({ variant: 'destructive', title: 'No Data', description: 'No readings to export.' });
+    if (readings.length === 0 && (!analysis || !analysis.summary)) {
+      toast({ variant: 'destructive', title: 'No Data', description: 'No readings or analysis to export.' });
       return;
     }
     const dataToExport = readings.map(r => ({
@@ -50,67 +61,160 @@ export default function ReadingList({ readings }: ReadingListProps) {
       Systolic: r.systolic,
       Diastolic: r.diastolic,
       'Body Position': r.bodyPosition,
-      // Medications column removed
+      'Exercise Context': r.exerciseContext,
     }));
-    const csv = Papa.unparse(dataToExport);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+
+    let csvContent = Papa.unparse(dataToExport);
+
+    if (analysis && analysis.summary) {
+        csvContent += `\n\nTrend Analysis Summary:\n"${analysis.summary.replace(/"/g, '""')}"`;
+    }
+    if (analysis && analysis.flags && analysis.flags.length > 0) {
+        csvContent += `\n\nFlags:\n${analysis.flags.map(f => `"${f.replace(/"/g, '""')}"`).join('\n')}`;
+    }
+    if (analysis && analysis.suggestions && analysis.suggestions.length > 0) {
+        csvContent += `\n\nSuggestions:\n${analysis.suggestions.map(s => `"${s.replace(/"/g, '""')}"`).join('\n')}`;
+    }
+
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', 'blood_pressure_readings.csv');
+    link.setAttribute('download', 'blood_pressure_report.csv');
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast({ title: 'Export Successful', description: 'Readings exported to CSV.' });
+    toast({ title: 'Export Successful', description: 'Readings and analysis report exported to CSV.' });
   };
 
   const exportToPDF = () => {
-    if (readings.length === 0) {
-      toast({ variant: 'destructive', title: 'No Data', description: 'No readings to export.' });
+    if (readings.length === 0 && !analysis) {
+      toast({ variant: 'destructive', title: 'No Data', description: 'No readings or analysis to export.' });
       return;
     }
     const doc = new jsPDF();
-    const tableColumn = ["Date", "Time", "Systolic (mmHg)", "Diastolic (mmHg)", "Body Position"]; // Medications column removed
-    const tableRows: any[][] = [];
+    let startY = 20; // Initial Y position
 
-    readings.forEach(reading => {
-      const readingData = [
-        format(new Date(reading.timestamp), 'yyyy-MM-dd'),
-        format(new Date(reading.timestamp), 'HH:mm:ss'),
-        reading.systolic,
-        reading.diastolic,
-        reading.bodyPosition,
-        // reading.medications || '-', // Medications data removed
-      ];
-      tableRows.push(readingData);
-    });
+    // Add a title to the PDF
+    doc.setFontSize(16);
+    doc.text('Blood Pressure Report - PressureTrack AI', doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
+    startY = 25; // Adjust startY after title
 
-    (doc as any).autoTable({
-      head: [tableColumn],
-      body: tableRows,
-      startY: 20,
-      didDrawPage: (data: any) => {
-        doc.setFontSize(10);
-        doc.text('Blood Pressure Readings - PressureTrack AI', data.settings.margin.left, 15);
-      }
-    });
-    doc.save('blood_pressure_readings.pdf');
-    toast({ title: 'Export Successful', description: 'Readings exported to PDF.' });
+
+    if (readings.length > 0) {
+        doc.setFontSize(12);
+        doc.text('Readings History', 14, startY);
+        startY += 7;
+
+        const tableColumn = ["Date", "Time", "Systolic (mmHg)", "Diastolic (mmHg)", "Body Position", "Exercise Context"];
+        const tableRows: any[][] = [];
+
+        readings.forEach(reading => {
+        const readingData = [
+            format(new Date(reading.timestamp), 'yyyy-MM-dd'),
+            format(new Date(reading.timestamp), 'HH:mm:ss'),
+            reading.systolic,
+            reading.diastolic,
+            reading.bodyPosition,
+            reading.exerciseContext,
+        ];
+        tableRows.push(readingData);
+        });
+
+        (doc as any).autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: startY,
+        theme: 'grid',
+        headStyles: { fillColor: [22, 160, 133] }, // Teal color for header
+        });
+        startY = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+
+    if (analysis) {
+        if (startY > 260) { // Check if new page is needed
+            doc.addPage();
+            startY = 20;
+        }
+        doc.setFontSize(14);
+        doc.text('Trend Analysis Report', 14, startY);
+        startY += 10;
+
+        doc.setFontSize(11);
+
+        const addSection = (title: string, content: string | string[]) => {
+            if (startY > 260) { doc.addPage(); startY = 20; }
+            doc.setFont(undefined, 'bold');
+            doc.text(title, 14, startY);
+            startY += 6;
+            doc.setFont(undefined, 'normal');
+            if (typeof content === 'string') {
+                const lines = doc.splitTextToSize(content, doc.internal.pageSize.getWidth() - 28);
+                doc.text(lines, 14, startY);
+                startY += (lines.length * 5) + 4;
+            } else if (Array.isArray(content)) {
+                content.forEach(item => {
+                    if (startY > 270) { doc.addPage(); startY = 20; }
+                    const itemLines = doc.splitTextToSize(`• ${item}`, doc.internal.pageSize.getWidth() - 32);
+                    doc.text(itemLines, 16, startY); // Indent list items
+                    startY += (itemLines.length * 5) + 1;
+                });
+                startY += 3;
+            }
+        };
+
+        if (analysis.summary) {
+            addSection('Summary:', analysis.summary);
+        }
+        if (analysis.flags && analysis.flags.length > 0) {
+            addSection('Flags:', analysis.flags);
+        }
+        if (analysis.suggestions && analysis.suggestions.length > 0) {
+            addSection('Suggestions & Next Steps:', analysis.suggestions);
+        }
+    }
+
+
+    doc.save('blood_pressure_report.pdf');
+    toast({ title: 'Export Successful', description: 'Readings and analysis report exported to PDF.' });
   };
 
   const shareViaEmail = () => {
-    if (readings.length === 0) {
-        toast({ variant: 'destructive', title: 'No Data', description: 'No readings to share.' });
+    if (readings.length === 0 && !analysis) {
+        toast({ variant: 'destructive', title: 'No Data', description: 'No readings or analysis to share.' });
         return;
     }
-    const subject = "My Blood Pressure Readings from PressureTrack AI";
-    let body = "Here are my recent blood pressure readings:\n\n";
-    const recentReadings = readings.slice(0, 10); 
-    recentReadings.forEach(r => {
-        body += `${format(new Date(r.timestamp), 'yyyy-MM-dd HH:mm')} - SYS: ${r.systolic}, DIA: ${r.diastolic}, Position: ${r.bodyPosition}\n`;
-    });
-    body += "\nGenerated by PressureTrack AI.\nNote: This is not medical advice. Consult a healthcare professional for any concerns.";
+    const subject = "My Blood Pressure Report from PressureTrack AI";
+    let body = "Hello,\n\nPlease find my blood pressure report from PressureTrack AI below.\n\n";
+
+    if (readings.length > 0) {
+        body += "==== Recent Readings (up to 10) ====\n";
+        const recentReadings = readings.slice(0, 10);
+        recentReadings.forEach(r => {
+            body += `${format(new Date(r.timestamp), 'yyyy-MM-dd HH:mm')} - SYS: ${r.systolic}, DIA: ${r.diastolic}, Position: ${r.bodyPosition}, Exercise: ${r.exerciseContext}\n`;
+        });
+        body += "\n";
+    }
+
+    if (analysis) {
+        body += "==== Trend Analysis ====\n";
+        if(analysis.summary) body += `Summary:\n${analysis.summary}\n\n`;
+        if (analysis.flags && analysis.flags.length > 0) {
+            body += "Flags:\n";
+            analysis.flags.forEach(f => body += `- ${f}\n`);
+            body += "\n";
+        }
+        if (analysis.suggestions && analysis.suggestions.length > 0) {
+            body += "Suggestions & Next Steps:\n";
+            analysis.suggestions.forEach(s => body += `- ${s}\n`);
+            body += "\n";
+        }
+    }
+
+    body += "\nBest regards,\n\nGenerated by PressureTrack AI.\nNote: This information is for tracking purposes and is not medical advice. Consult a healthcare professional for any concerns.";
     const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailtoLink;
     toast({ title: 'Email Draft Opened', description: 'Your email client should open with a draft.' });
@@ -152,13 +256,14 @@ export default function ReadingList({ readings }: ReadingListProps) {
               <TableHead>Diastolic (mmHg)</TableHead>
               <TableHead>Category</TableHead>
               <TableHead className="hidden sm:table-cell">Position</TableHead>
-              {/* Medications TableHead removed */}
+              <TableHead className="hidden md:table-cell">Exercise</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {readings.map((reading) => {
               const { category, colorClass, Icon: BPCategoryIcon } = getBpCategory(reading.systolic, reading.diastolic);
               const PositionIcon = getBodyPositionIcon(reading.bodyPosition);
+              const ExerciseIcon = getExerciseContextIcon(reading.exerciseContext);
               return (
                 <TableRow key={reading.id}>
                   <TableCell>
@@ -172,11 +277,16 @@ export default function ReadingList({ readings }: ReadingListProps) {
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
                      <div className="flex items-center gap-1 text-sm" title={reading.bodyPosition}>
-                        <PositionIcon className="h-4 w-4 shrink-0 text-muted-foreground"/> 
+                        <PositionIcon className="h-4 w-4 shrink-0 text-muted-foreground"/>
                         <span>{reading.bodyPosition}</span>
                       </div>
                   </TableCell>
-                  {/* Medications TableCell removed */}
+                  <TableCell className="hidden md:table-cell">
+                     <div className="flex items-center gap-1 text-sm" title={reading.exerciseContext}>
+                        <ExerciseIcon className="h-4 w-4 shrink-0 text-muted-foreground"/>
+                        <span>{reading.exerciseContext}</span>
+                      </div>
+                  </TableCell>
                 </TableRow>
               );
             })}
@@ -185,13 +295,13 @@ export default function ReadingList({ readings }: ReadingListProps) {
         </Table>
       </CardContent>
       <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={exportToCSV} disabled={readings.length === 0}>
+          <Button variant="outline" onClick={exportToCSV} disabled={readings.length === 0 && !analysis}>
             <FileText className="mr-2 h-4 w-4" /> Export to CSV
           </Button>
-          <Button variant="outline" onClick={exportToPDF} disabled={readings.length === 0}>
+          <Button variant="outline" onClick={exportToPDF} disabled={readings.length === 0 && !analysis}>
             <FileArchive className="mr-2 h-4 w-4" /> Export to PDF
           </Button>
-          <Button variant="outline" onClick={shareViaEmail} disabled={readings.length === 0}>
+          <Button variant="outline" onClick={shareViaEmail} disabled={readings.length === 0 && !analysis}>
             <Mail className="mr-2 h-4 w-4" /> Share via Email
           </Button>
           <Button variant="outline" disabled title="Secure shareable link (Coming Soon)">
