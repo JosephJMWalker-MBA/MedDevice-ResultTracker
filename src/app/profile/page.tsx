@@ -10,7 +10,7 @@ export default function ProfilePage() {
   return (
     <div className="container mx-auto max-w-4xl p-4 md:p-8 space-y-8">
       <ProfileForm />
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
+      <div className="flex flex-col sm:flex-row items-center sm:justify-start gap-4 mt-8">
         <Button asChild variant="outline">
           <Link href="/">
             <ArrowLeft className="mr-2 h-4 w-4" />

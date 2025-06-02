@@ -59,12 +59,9 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
   useEffect(() => {
     if (initialData) {
       form.reset(initialData);
-      // If initialData has an image associated with it, we don't typically re-preview it here
-      // as imageFile is for new uploads. Handling existing images would require more complex state.
-      setImagePreview(null); // Clear preview if editing
+      setImagePreview(null); 
       setOcrProcessingStatus('idle');
     } else {
-       // Set default date and time if not editing and fields are empty
         if (!form.getValues('date')) {
           form.setValue('date', new Date().toISOString().split('T')[0]);
         }
@@ -104,7 +101,6 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
 
       try {
         const dataUri = await fileToDataUri(file);
-        // Assume OCR data might not yet include pulse
         const extractedData: OcrData & { pulse?: number } = await callExtractDataAction(dataUri);
 
         if (extractedData.date && !form.getValues('date')) form.setValue('date', extractedData.date);
@@ -112,8 +108,6 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
 
         if (extractedData.systolic) form.setValue('systolic', extractedData.systolic as any);
         if (extractedData.diastolic) form.setValue('diastolic', extractedData.diastolic as any);
-        // OCR might not extract pulse, so we don't force it.
-        // if (extractedData.pulse) form.setValue('pulse', extractedData.pulse as any);
 
 
         if (extractedData.systolic || extractedData.diastolic) {
@@ -133,8 +127,8 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
   };
 
   const onSubmit: SubmitHandler<ReadingFormData> = (data) => {
-    onFormSubmit(data); // Parent component handles adding or updating
-    if (!isEditing) { // Only reset fully if not editing
+    onFormSubmit(data); 
+    if (!isEditing) { 
       form.reset({
         date: new Date().toISOString().split('T')[0],
         time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
@@ -153,7 +147,6 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
           fileInput.value = '';
       }
     }
-    // Toast is now handled by parent (HomePage) after add/update
   };
 
 
@@ -175,7 +168,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
               name="imageFile"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel htmlFor="imageFile" className="text-base">Upload Image (Optional)</FormLabel>
+                  <FormLabel htmlFor="imageFile">Upload Image (Optional)</FormLabel>
                   <FormControl>
                     <Input
                       id="imageFile"
@@ -210,7 +203,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                 name="date"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base">Date</FormLabel>
+                    <FormLabel>Date</FormLabel>
                     <FormControl>
                       <Input type="date" {...field} />
                     </FormControl>
@@ -223,7 +216,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                 name="time"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base">Time</FormLabel>
+                    <FormLabel>Time</FormLabel>
                     <FormControl>
                       <Input type="time" {...field} />
                     </FormControl>
@@ -239,7 +232,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                 name="systolic"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base">Systolic (SYS)</FormLabel>
+                    <FormLabel>Systolic (SYS)</FormLabel>
                     <FormControl>
                       <Input type="number" placeholder="e.g., 120" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
                     </FormControl>
@@ -252,7 +245,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                 name="diastolic"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base">Diastolic (DIA)</FormLabel>
+                    <FormLabel>Diastolic (DIA)</FormLabel>
                     <FormControl>
                       <Input type="number" placeholder="e.g., 80" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
                     </FormControl>
@@ -265,7 +258,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                 name="pulse"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base flex items-center gap-1">
+                    <FormLabel className="flex items-center gap-1">
                         <HeartPulseIcon className="h-4 w-4 text-muted-foreground" />
                         Pulse (bpm)
                     </FormLabel>
@@ -284,7 +277,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                 name="bodyPosition"
                 render={({ field }) => (
                     <FormItem>
-                    <FormLabel className="text-base">Body Position</FormLabel>
+                    <FormLabel>Body Position</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} >
                         <FormControl>
                         <SelectTrigger>
@@ -306,7 +299,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                 name="exerciseContext"
                 render={({ field }) => (
                     <FormItem>
-                    <FormLabel className="text-base flex items-center gap-1">
+                    <FormLabel className="flex items-center gap-1">
                         <Bike className="h-4 w-4 text-muted-foreground" />
                         Exercise Context
                     </FormLabel>
@@ -333,7 +326,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
               render={() => (
                 <FormItem>
                   <div className="mb-4">
-                    <FormLabel className="text-base flex items-center gap-1">
+                    <FormLabel className="flex items-center gap-1">
                         <Stethoscope className="h-4 w-4 text-muted-foreground" />
                         Symptoms (Optional)
                     </FormLabel>
