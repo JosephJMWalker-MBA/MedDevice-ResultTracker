@@ -42,7 +42,7 @@ const getExerciseContextIcon = (context: ExerciseContext): React.ElementType => 
     case 'Resting': return Dumbbell;
     case 'Pre-Exercise': return Zap;
     case 'During Exercise': return Bike;
-    case 'Post-Exercise': return ThermometerSun; // Changed icon for post-exercise
+    case 'Post-Exercise': return ThermometerSun;
     default: return HelpCircleIcon;
   }
 };
@@ -68,15 +68,23 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
     }));
 
     let csvContent = Papa.unparse(dataToExport);
+    let analysisSummaryText = "";
+    let analysisFlagsText = "";
+    let analysisSuggestionsText = "";
 
-    if (analysis && analysis.summary) {
-        csvContent += `\n\nTrend Analysis Summary:\n"${analysis.summary.replace(/"/g, '""').replace(disclaimerText, '').trim()}"`;
-    }
-    if (analysis && analysis.flags && analysis.flags.length > 0) {
-        csvContent += `\n\nFlags:\n${analysis.flags.map(f => `"${f.replace(/"/g, '""')}"`).join('\n')}`;
-    }
-    if (analysis && analysis.suggestions && analysis.suggestions.length > 0) {
-        csvContent += `\n\nSuggestions:\n${analysis.suggestions.map(s => `"${s.replace(/"/g, '""')}"`).join('\n')}`;
+    if (analysis) {
+        if (analysis.summary) {
+            analysisSummaryText = analysis.summary.replace(disclaimerText, "").trim();
+            csvContent += `\n\nTrend Analysis Summary:\n"${analysisSummaryText.replace(/"/g, '""')}"`;
+        }
+        if (analysis.flags && analysis.flags.length > 0) {
+            analysisFlagsText = analysis.flags.map(f => `"${f.replace(/"/g, '""')}"`).join('\n');
+            csvContent += `\n\nFlags:\n${analysisFlagsText}`;
+        }
+        if (analysis.suggestions && analysis.suggestions.length > 0) {
+            analysisSuggestionsText = analysis.suggestions.map(s => `"${s.replace(/"/g, '""')}"`).join('\n');
+            csvContent += `\n\nSuggestions:\n${analysisSuggestionsText}`;
+        }
     }
     csvContent += `\n\n${disclaimerText}`;
 
@@ -100,6 +108,29 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
     }
     const doc = new jsPDF();
     let startY = 20;
+
+    // Helper function to add disclaimer to the current page
+    const addDisclaimerToCurrentPage = (docInstance: jsPDF, text: string) => {
+      const pageHeight = docInstance.internal.pageSize.getHeight();
+      const pageWidth = docInstance.internal.pageSize.getWidth();
+      const margin = 14; 
+      const bottomOffset = 10; 
+      const currentFontSize = docInstance.getFontSize();
+      docInstance.setFontSize(8);
+    
+      const disclaimerLines = docInstance.splitTextToSize(text, pageWidth - margin * 2);
+      // Calculate approximate height of the disclaimer text block
+      let textHeight = 0;
+      if (disclaimerLines && Array.isArray(disclaimerLines)) {
+          textHeight = disclaimerLines.length * 3.5; // Approximate height based on line spacing for 8pt font
+      } else if (typeof disclaimerLines === 'string') {
+          textHeight = 3.5; // Single line
+      }
+      
+      docInstance.text(disclaimerLines, margin, pageHeight - bottomOffset - textHeight);
+      docInstance.setFontSize(currentFontSize); // Restore original font size
+    };
+
 
     doc.setFontSize(16);
     doc.text('Blood Pressure Report - PressureTrack AI', doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
@@ -132,14 +163,8 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
             body: tableRows,
             startY: startY,
             theme: 'grid',
-            headStyles: { fillColor: [34, 102, 153] },
-            didDrawPage: (data: any) => {
-                doc.setFontSize(8);
-                const pageHeight = doc.internal.pageSize.getHeight();
-                const disclaimerLines = doc.splitTextToSize(disclaimerText, doc.internal.pageSize.getWidth() - data.settings.margin.left - data.settings.margin.right);
-                doc.text(disclaimerLines, data.settings.margin.left, pageHeight - 10 - (disclaimerLines.length -1) * 3.5 );
-            },
-            margin: { bottom: 20 } 
+            headStyles: { fillColor: [34, 102, 153] }, // Example: A calm blue
+            margin: { bottom: 25 } // Increased bottom margin to ensure space for disclaimer added by the loop
         });
         startY = (doc as any).lastAutoTable.finalY + 10;
     }
@@ -157,7 +182,8 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
         doc.setFontSize(11);
 
         const addSection = (title: string, content: string | string[]) => {
-            if (startY > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); startY = 20; }
+            // Ensure enough space for section title + at least one line of content + footer
+            if (startY > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); startY = 20; }
             doc.setFont(undefined, 'bold');
             doc.text(title, 14, startY);
             startY += 6;
@@ -166,22 +192,30 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
             const contentToProcess = typeof content === 'string' ? content.replace(disclaimerText, '').trim() : content;
 
             if (typeof contentToProcess === 'string') {
-                const lines = doc.splitTextToSize(contentToProcess, doc.internal.pageSize.getWidth() - 28);
-                if (startY + (lines.length * 5) > doc.internal.pageSize.getHeight() - 25) {
-                    doc.addPage(); startY = 20;
-                }
-                doc.text(lines, 14, startY);
-                startY += (lines.length * 5) + 4;
+                const lines = doc.splitTextToSize(contentToProcess, doc.internal.pageSize.getWidth() - 28); // 14 margin on each side
+                lines.forEach((line: string, index: number) => {
+                    if (startY + 5 > doc.internal.pageSize.getHeight() - 25) { // Check before drawing each line
+                        doc.addPage();
+                        startY = 20;
+                    }
+                    doc.text(line, 14, startY);
+                    startY += 5;
+                });
+                startY += 4; // Extra space after section
             } else if (Array.isArray(contentToProcess)) {
                 contentToProcess.forEach(item => {
-                    const itemLines = doc.splitTextToSize(`• ${item}`, doc.internal.pageSize.getWidth() - 32);
-                    if (startY + (itemLines.length * 5) > doc.internal.pageSize.getHeight() - 25) {
-                       doc.addPage(); startY = 20;
-                    }
-                    doc.text(itemLines, 16, startY);
-                    startY += (itemLines.length * 5) + 1;
+                    const itemLines = doc.splitTextToSize(`• ${item}`, doc.internal.pageSize.getWidth() - 32); // 16 margin for bullet point
+                    itemLines.forEach((line: string, index: number) => {
+                         if (startY + 5 > doc.internal.pageSize.getHeight() - 25) { // Check before drawing each line
+                            doc.addPage();
+                            startY = 20;
+                        }
+                        doc.text(line, 16, startY);
+                        startY += 5;
+                    });
+                    startY += 1; // Space after bullet item
                 });
-                startY += 3;
+                startY += 3; // Extra space after list
             }
         };
 
@@ -194,6 +228,13 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
         if (analysis.suggestions && analysis.suggestions.length > 0) {
             addSection('Suggestions & Next Steps:', analysis.suggestions);
         }
+    }
+    
+    // Add disclaimer to all pages
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      addDisclaimerToCurrentPage(doc, disclaimerText);
     }
 
     doc.save('blood_pressure_report.pdf');
@@ -260,7 +301,7 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
 
   return (
     <Card className="shadow-lg">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div>
           <CardTitle className="text-2xl flex items-center gap-2">
             <History className="h-7 w-7 text-primary" />
@@ -343,3 +384,4 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
     </Card>
   );
 }
+
