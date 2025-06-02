@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -89,19 +90,17 @@ const prompt = ai.definePrompt({
       *   Start with a conversational interpretation of the most recent reading: "Your latest reading of {{readings.0.systolic}}/{{readings.0.diastolic}} mmHg, taken on {{readings.0.formattedTimestamp}} while {{readings.0.bodyPosition}} and in a '{{readings.0.exerciseContext}}' state, shows the following:"
       *   **Systolic Pressure ({{readings.0.systolic}} mmHg):** Explain what it means (e.g., "This is the pressure when your heart beats."). Classify it (e.g., "This is in the normal/elevated/stage 1 hypertension range.").
           *   Contextualize based on body position and exercise:
-              *   If 'Post-Exercise': "It's common for systolic pressure to be higher after exercise."
-              *   If 'Standing': "Standing can sometimes slightly raise or lower blood pressure for some individuals."
+              *   If '{{readings.0.exerciseContext}}' is 'Post-Exercise': "It's common for systolic pressure to be higher after exercise as your body recovers."
+              *   If '{{readings.0.bodyPosition}}' is 'Standing': "Standing can sometimes slightly raise or lower blood pressure for some individuals. If this is a consistent pattern, it's worth noting."
       *   **Diastolic Pressure ({{readings.0.diastolic}} mmHg):** Explain what it means (e.g., "This is the pressure when your heart rests between beats."). Classify it.
           *   Contextualize:
-              *   If 'Post-Exercise': "A lower diastolic pressure can be expected after exercise as blood vessels relax."
-              *   Mention if it's unusually low or high for the context.
-      *   **(If applicable and data is available) Pulse:** Briefly comment if pulse data were part of the input.
-          *   If 'Post-Exercise': "An elevated pulse is also expected after physical activity."
+              *   If '{{readings.0.exerciseContext}}' is 'Post-Exercise': "A lower diastolic pressure can sometimes be seen after exercise as blood vessels relax. However, it should still be within a healthy range."
+      *   **(If applicable and pulse data were part of the input, which it is not in this app currently) Pulse:** Briefly comment. If 'Post-Exercise': "An elevated pulse is also expected after physical activity."
 
   2.  **Trend Analysis (If multiple readings are available):**
       *   Provide a plain-language summary of overall trends in systolic and diastolic pressures over the last 30 days.
       *   Mention consistency or variability. "Your readings over the past month show..."
-      *   Incorporate how the user's profile data (age, weight, gender, race/ethnicity, medical conditions, medications), body position, and exercise context might influence overall blood pressure patterns, according to general health knowledge and AHA/CDC guidelines.
+      *   Incorporate how the user's profile data (age, weight, gender, race/ethnicity, medicalConditions, medications), body position, and exercise context might influence overall blood pressure patterns, according to general health knowledge and AHA/CDC guidelines.
 
   **Flags (For the 'flags' field - array of strings):**
   *   List any flags based on the following AHA/CDC blood pressure categories. Apply these to individual readings or overall trends as appropriate.
@@ -110,19 +109,20 @@ const prompt = ai.definePrompt({
     - Hypertension Stage 1: Systolic 130–139 mmHg OR Diastolic 80–89 mmHg.
     - Hypertension Stage 2: Systolic ≥140 mmHg OR Diastolic ≥90 mmHg.
     - Hypertensive Crisis: Systolic >180 mmHg AND/OR Diastolic >120 mmHg. (If this is flagged for any recent reading, make this the MOST prominent flag and strongly advise seeking immediate medical attention in suggestions).
-  *   Consider body position and exercise context: A 'Post-Exercise' reading might be flagged differently or have an explanatory note. For example, flag as "Elevated (Post-Exercise)" if it's high but expected.
+  *   Consider body position and exercise context: A 'Post-Exercise' reading might be flagged differently or have an explanatory note. For example, flag as "Elevated (Post-Exercise)" if it's high but expected within a reasonable range post-activity.
 
   **Suggestions & Next Steps (For the 'suggestions' field - array of strings):**
   1.  **"What to watch for":**
-      *   Based on the recent reading(s) and profile: "Given your reading, it’s good to be aware of symptoms like dizziness, lightheadedness, or unusual fatigue, especially [mention context e.g., 'when standing up quickly' or 'if readings are consistently low/high']. If you experience these, it's worth noting."
-      *   If values are normal for the context (e.g. post-exercise): "If you feel fine and this pattern is typical for you after exercise, there’s likely no immediate cause for concern, but continue to monitor."
+      *   Based on the recent reading(s) and profile: "Given your reading, it’s good to be aware of symptoms like dizziness, lightheadedness, or unusual fatigue, especially [mention context e.g., 'when standing up quickly' or 'if readings are consistently low/high']. If you experience these, it's worth noting and discussing with your doctor."
+      *   If values are normal for the context (e.g. post-exercise): "If you feel fine and this pattern is typical for you after exercise, there’s likely no immediate cause for concern, but continue to monitor your blood pressure as usual."
   2.  **Personalized Lifestyle/Monitoring Advice:**
       *   Offer actionable suggestions for lifestyle adjustments (diet, exercise, stress), monitoring, or discussions with a healthcare provider.
       *   These should be informed by the trends, flags, user profile, body position, and exercise context, aligning with general AHA/CDC recommendations.
-      *   Example: "If readings are often higher when standing, discussing this with your doctor might be helpful to rule out orthostatic hypotension."
-  3.  **Call to Action Prompts (include these as the last items in the suggestions array):**
-      *   "Would you like to compare this reading to your previous ones in more detail?"
-      *   "Do you want more information about what these blood pressure numbers mean for you?"
+      *   Example: "If readings are often higher when standing, discussing this with your doctor might be helpful to rule out orthostatic concerns."
+      *   Example: "Maintaining consistent measurement practices (e.g., same time of day, same position when resting) can help in tracking your trends accurately."
+  3.  **Prompts for Further Engagement (include these as the last items in the suggestions array, phrased as considerations):**
+      *   "Consider comparing this reading to your previous ones to observe any patterns over time."
+      *   "For a deeper understanding of what these blood pressure numbers mean for your overall health, a discussion with your healthcare provider is always recommended."
 
   **VERY IMPORTANT:**
   *   The final "summary" field in your output (which contains the detailed breakdown and trend analysis) MUST conclude with the exact sentence: "⚠️ This is not medical advice. Consult a healthcare professional for any concerns." Do not omit or alter this disclaimer. Ensure it is the very last part of the summary.

@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile } from '@/lib/types';
-import { BodyPositionOptions, ExerciseContextOptions } from '@/lib/types'; // Added ExerciseContextOptions
+import { BodyPositionOptions, ExerciseContextOptions } from '@/lib/types';
 import { callAnalyzeTrendAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 
@@ -11,9 +11,10 @@ import ReadingForm from '@/components/blood-pressure/reading-form';
 import TrendAnalysisDisplay from '@/components/blood-pressure/trend-analysis-display';
 import ReadingList from '@/components/blood-pressure/reading-list';
 import DisclaimerAlert from '@/components/blood-pressure/disclaimer-alert';
+import BpChart from '@/components/blood-pressure/bp-chart'; // Import the new chart component
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, TrendingUp } from 'lucide-react';
 import type { AnalyzeBloodPressureTrendInput } from '@/ai/flows/analyze-blood-pressure-trend';
 
 
@@ -32,11 +33,11 @@ export default function HomePage() {
 
     const recentReadings = currentReadings
       .filter(r => new Date(r.timestamp) >= thirtyDaysAgo)
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // AI expects most recent first
 
     if (recentReadings.length === 0) {
       setAnalysis({
-        summary: "No recent readings in the last 30 days to analyze.",
+        summary: "No recent readings in the last 30 days to analyze.\n\n⚠️ This is not medical advice. Consult a healthcare professional for any concerns.",
         flags: [],
         suggestions: ["Add more readings to get a trend analysis based on the last 30 days."]
       });
@@ -52,7 +53,7 @@ export default function HomePage() {
           systolic: r.systolic,
           diastolic: r.diastolic,
           bodyPosition: r.bodyPosition || BodyPositionOptions[0],
-          exerciseContext: r.exerciseContext || ExerciseContextOptions[0], // Added
+          exerciseContext: r.exerciseContext || ExerciseContextOptions[0],
         })),
         ...(profile?.age && { age: profile.age }),
         ...(profile?.weightLbs && { weightLbs: profile.weightLbs }),
@@ -88,8 +89,8 @@ export default function HomePage() {
           systolic: typeof reading.systolic === 'number' ? reading.systolic : 0,
           diastolic: typeof reading.diastolic === 'number' ? reading.diastolic : 0,
           bodyPosition: BodyPositionOptions.includes(reading.bodyPosition) ? reading.bodyPosition : BodyPositionOptions[0],
-          exerciseContext: ExerciseContextOptions.includes(reading.exerciseContext) ? reading.exerciseContext : ExerciseContextOptions[0], // Added for healing
-        })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          exerciseContext: ExerciseContextOptions.includes(reading.exerciseContext) ? reading.exerciseContext : ExerciseContextOptions[0],
+        })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // sort by date descending for display
       }
       setReadings(loadedReadings);
 
@@ -134,7 +135,7 @@ export default function HomePage() {
       systolic: data.systolic,
       diastolic: data.diastolic,
       bodyPosition: data.bodyPosition,
-      exerciseContext: data.exerciseContext, // Added
+      exerciseContext: data.exerciseContext,
     };
     const updatedReadings = [...readings, newReading].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setReadings(updatedReadings);
@@ -147,6 +148,24 @@ export default function HomePage() {
         isLoadingOcrParent={isLoadingOcr}
         setIsLoadingOcrParent={setIsLoadingOcr}
       />
+
+      {isInitialLoad || (readings.length === 0 && !isLoadingAnalysis) ? (
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-2xl flex items-center gap-2">
+                <TrendingUp className="h-7 w-7 text-primary" />
+                Blood Pressure Chart
+            </CardTitle>
+            <CardDescription>Add some readings to see your trends visualized.</CardDescription>
+          </CardHeader>
+          <CardContent className="h-[300px] flex items-center justify-center">
+            <p className="text-muted-foreground">Waiting for data...</p>
+          </CardContent>
+        </Card>
+      ) : readings.length > 0 ? (
+        <BpChart readings={readings} />
+      ): null}
+
 
       {isInitialLoad || isLoadingAnalysis ? (
         <Card className="shadow-lg">
@@ -186,3 +205,4 @@ export default function HomePage() {
     </div>
   );
 }
+

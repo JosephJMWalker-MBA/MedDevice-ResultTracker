@@ -3,7 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCap
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { type BloodPressureReading, type BodyPosition, type ExerciseContext, type TrendAnalysisResult } from '@/lib/types';
-import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell } from 'lucide-react'; // Added Dumbbell for Resting
+import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell } from 'lucide-react';
 import { format } from 'date-fns';
 import Papa from 'papaparse';
 import jsPDF from 'jspdf';
@@ -38,7 +38,7 @@ const getBodyPositionIcon = (position: BodyPosition): React.ElementType => {
 
 const getExerciseContextIcon = (context: ExerciseContext): React.ElementType => {
   switch (context) {
-    case 'Resting': return Dumbbell; // Changed to Dumbbell for resting/inactive
+    case 'Resting': return Dumbbell;
     case 'Pre-Exercise': return Zap;
     case 'During Exercise': return Bike;
     case 'Post-Exercise': return ThermometerSun;
@@ -49,6 +49,7 @@ const getExerciseContextIcon = (context: ExerciseContext): React.ElementType => 
 
 export default function ReadingList({ readings, analysis }: ReadingListProps) {
   const { toast } = useToast();
+  const disclaimerText = "⚠️ This is not medical advice. Consult a healthcare professional for any concerns.";
 
   const exportToCSV = () => {
     if (readings.length === 0 && (!analysis || !analysis.summary)) {
@@ -67,7 +68,7 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
     let csvContent = Papa.unparse(dataToExport);
 
     if (analysis && analysis.summary) {
-        csvContent += `\n\nTrend Analysis Summary:\n"${analysis.summary.replace(/"/g, '""')}"`;
+        csvContent += `\n\nTrend Analysis Summary:\n"${analysis.summary.replace(/"/g, '""').replace(disclaimerText, '').trim()}"`;
     }
     if (analysis && analysis.flags && analysis.flags.length > 0) {
         csvContent += `\n\nFlags:\n${analysis.flags.map(f => `"${f.replace(/"/g, '""')}"`).join('\n')}`;
@@ -75,6 +76,7 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
     if (analysis && analysis.suggestions && analysis.suggestions.length > 0) {
         csvContent += `\n\nSuggestions:\n${analysis.suggestions.map(s => `"${s.replace(/"/g, '""')}"`).join('\n')}`;
     }
+    csvContent += `\n\n${disclaimerText}`;
 
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -95,12 +97,11 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
       return;
     }
     const doc = new jsPDF();
-    let startY = 20; // Initial Y position
+    let startY = 20;
 
-    // Add a title to the PDF
     doc.setFontSize(16);
     doc.text('Blood Pressure Report - PressureTrack AI', doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
-    startY = 25; // Adjust startY after title
+    startY = 25;
 
 
     if (readings.length > 0) {
@@ -124,18 +125,26 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
         });
 
         (doc as any).autoTable({
-        head: [tableColumn],
-        body: tableRows,
-        startY: startY,
-        theme: 'grid',
-        headStyles: { fillColor: [22, 160, 133] }, // Teal color for header
+            head: [tableColumn],
+            body: tableRows,
+            startY: startY,
+            theme: 'grid',
+            headStyles: { fillColor: [34, 102, 153] }, // Primary color from theme (approx)
+            didDrawPage: (data: any) => {
+                // Footer with disclaimer on each page
+                doc.setFontSize(8);
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const disclaimerLines = doc.splitTextToSize(disclaimerText, doc.internal.pageSize.getWidth() - data.settings.margin.left - data.settings.margin.right);
+                doc.text(disclaimerLines, data.settings.margin.left, pageHeight - 10 - (disclaimerLines.length -1) * 3.5 ); // Adjust Y for multi-line
+            },
+            margin: { bottom: 20 } // Ensure space for footer
         });
         startY = (doc as any).lastAutoTable.finalY + 10;
     }
 
 
     if (analysis) {
-        if (startY > 260) { // Check if new page is needed
+        if (startY > doc.internal.pageSize.getHeight() - 30) { // Check if new page is needed before analysis
             doc.addPage();
             startY = 20;
         }
@@ -146,20 +155,28 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
         doc.setFontSize(11);
 
         const addSection = (title: string, content: string | string[]) => {
-            if (startY > 260) { doc.addPage(); startY = 20; }
+            if (startY > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); startY = 20; }
             doc.setFont(undefined, 'bold');
             doc.text(title, 14, startY);
             startY += 6;
             doc.setFont(undefined, 'normal');
-            if (typeof content === 'string') {
-                const lines = doc.splitTextToSize(content, doc.internal.pageSize.getWidth() - 28);
+            
+            const contentToProcess = typeof content === 'string' ? content.replace(disclaimerText, '').trim() : content;
+
+            if (typeof contentToProcess === 'string') {
+                const lines = doc.splitTextToSize(contentToProcess, doc.internal.pageSize.getWidth() - 28);
+                if (startY + (lines.length * 5) > doc.internal.pageSize.getHeight() - 25) {
+                    doc.addPage(); startY = 20;
+                }
                 doc.text(lines, 14, startY);
                 startY += (lines.length * 5) + 4;
-            } else if (Array.isArray(content)) {
-                content.forEach(item => {
-                    if (startY > 270) { doc.addPage(); startY = 20; }
+            } else if (Array.isArray(contentToProcess)) {
+                contentToProcess.forEach(item => {
                     const itemLines = doc.splitTextToSize(`• ${item}`, doc.internal.pageSize.getWidth() - 32);
-                    doc.text(itemLines, 16, startY); // Indent list items
+                    if (startY + (itemLines.length * 5) > doc.internal.pageSize.getHeight() - 25) {
+                       doc.addPage(); startY = 20;
+                    }
+                    doc.text(itemLines, 16, startY);
                     startY += (itemLines.length * 5) + 1;
                 });
                 startY += 3;
@@ -176,7 +193,6 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
             addSection('Suggestions & Next Steps:', analysis.suggestions);
         }
     }
-
 
     doc.save('blood_pressure_report.pdf');
     toast({ title: 'Export Successful', description: 'Readings and analysis report exported to PDF.' });
@@ -201,7 +217,7 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
 
     if (analysis) {
         body += "==== Trend Analysis ====\n";
-        if(analysis.summary) body += `Summary:\n${analysis.summary}\n\n`;
+        if(analysis.summary) body += `Summary:\n${analysis.summary.replace(disclaimerText, '').trim()}\n\n`;
         if (analysis.flags && analysis.flags.length > 0) {
             body += "Flags:\n";
             analysis.flags.forEach(f => body += `- ${f}\n`);
@@ -214,7 +230,7 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
         }
     }
 
-    body += "\nBest regards,\n\nGenerated by PressureTrack AI.\nNote: This information is for tracking purposes and is not medical advice. Consult a healthcare professional for any concerns.";
+    body += `\nBest regards,\n\nGenerated by PressureTrack AI.\n${disclaimerText}`;
     const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailtoLink;
     toast({ title: 'Email Draft Opened', description: 'Your email client should open with a draft.' });
@@ -311,3 +327,4 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
     </Card>
   );
 }
+
