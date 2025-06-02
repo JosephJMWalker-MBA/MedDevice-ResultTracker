@@ -12,7 +12,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import { BodyPositionOptions, RaceEthnicityOptions, GenderOptions, ExerciseContextOptions, StaticSymptomsList } from '@/lib/types';
+import { BodyPositionOptions, RaceEthnicityOptions, GenderOptions, ExerciseContextOptions, StaticSymptomsList, type Symptom } from '@/lib/types';
 
 // Schema for a single reading as received by the flow
 const FlowReadingSchema = z.object({
@@ -36,14 +36,15 @@ const AnalyzeBloodPressureTrendInputSchema = z.object({
 });
 export type AnalyzeBloodPressureTrendInput = z.infer<typeof AnalyzeBloodPressureTrendInputSchema>;
 
-// Schema for a single reading as expected by the prompt (with formatted timestamp)
+// Schema for a single reading as expected by the prompt (with formatted timestamp and symptom display flag)
 const PromptReadingSchema = FlowReadingSchema.extend({
-  formattedTimestamp: z.string().describe('Pre-formatted timestamp for display (e.g., "May 17, 2024 19:10").')
+  formattedTimestamp: z.string().describe('Pre-formatted timestamp for display (e.g., "May 17, 2024 19:10").'),
+  hasDisplayableSymptoms: z.boolean().describe('Whether the reading has symptoms that should be displayed (not empty and not just "None").')
 });
 
 // Internal input schema for the prompt itself
 const AnalyzeBloodPressureTrendPromptInternalInputSchema = z.object({
-  readings: z.array(PromptReadingSchema).describe('Array of blood pressure readings with formatted timestamps.'),
+  readings: z.array(PromptReadingSchema).describe('Array of blood pressure readings with formatted timestamps and symptom display flag.'),
   age: z.number().optional().describe('Age of the user.'),
   weightLbs: z.number().optional().describe('Weight of the user in lbs.'),
   gender: z.enum(GenderOptions).optional().describe('Gender of the user.'),
@@ -71,9 +72,16 @@ const prompt = ai.definePrompt({
   prompt: `You are HealthInsightBot, a friendly and empathetic AI health assistant specializing in blood pressure analysis.
   Your goal is to provide clear, conversational, and actionable feedback based on current AHA/CDC guidelines.
 
+  Blood Pressure Categories (AHA/CDC):
+  - Normal: Systolic <120 mmHg AND Diastolic <80 mmHg.
+  - Elevated: Systolic 120–129 mmHg AND Diastolic <80 mmHg.
+  - Hypertension Stage 1: Systolic 130–139 mmHg OR Diastolic 80–89 mmHg.
+  - Hypertension Stage 2: Systolic ≥140 mmHg OR Diastolic ≥90 mmHg.
+  - Hypertensive Crisis: Systolic >180 mmHg AND/OR Diastolic >120 mmHg. (Seek immediate medical attention if symptoms like chest pain, shortness of breath, numbness, vision changes occur).
+
   Blood Pressure Readings (most recent first):
   {{#each readings}}
-  - Date: {{formattedTimestamp}}, Systolic: {{systolic}}, Diastolic: {{diastolic}}, Position: {{bodyPosition}}, Exercise Context: {{exerciseContext}}{{#if symptoms.length}}{{#unless (eq symptoms.0 "None")}}, Symptoms: {{#each symptoms}}{{.}}{{#unless @last}}, {{/unless}}{{/each}}{{/unless}}{{/if}}
+  - Date: {{formattedTimestamp}}, Systolic: {{systolic}}, Diastolic: {{diastolic}}, Position: {{bodyPosition}}, Exercise Context: {{exerciseContext}}{{#if hasDisplayableSymptoms}}, Symptoms: {{#each symptoms}}{{.}}{{#unless @last}}, {{/unless}}{{/each}}{{/if}}
   {{/each}}
 
   User Profile (if available):
@@ -88,30 +96,25 @@ const prompt = ai.definePrompt({
 
   **Overall Summary (Primary output for the 'summary' field):**
   1.  **Recent Reading Breakdown (If 1-2 readings provided, focus on the most recent. If many, briefly summarize the most recent before trend analysis):**
-      *   Start with a conversational interpretation of the most recent reading: "Your latest reading of {{readings.0.systolic}}/{{readings.0.diastolic}} mmHg, taken on {{readings.0.formattedTimestamp}} while {{readings.0.bodyPosition}} and in a '{{readings.0.exerciseContext}}' state{{#if readings.0.symptoms.length}}{{#unless (eq readings.0.symptoms.0 "None")}}, while experiencing: {{#each readings.0.symptoms}}{{.}}{{#unless @last}}, {{/unless}}{{/each}}{{/unless}}{{/if}}, shows the following:"
-      *   **Systolic Pressure ({{readings.0.systolic}} mmHg):** Explain what it means (e.g., "This is the pressure when your heart beats."). Classify it (e.g., "This is in the normal/elevated/stage 1 hypertension range.").
+      *   Start with a conversational interpretation of the most recent reading: "Your latest reading of {{readings.0.systolic}}/{{readings.0.diastolic}} mmHg, taken on {{readings.0.formattedTimestamp}} while {{readings.0.bodyPosition}} and in a '{{readings.0.exerciseContext}}' state{{#if readings.0.hasDisplayableSymptoms}}, while experiencing: {{#each readings.0.symptoms}}{{.}}{{#unless @last}}, {{/unless}}{{/each}}{{/if}}, shows the following:"
+      *   **Systolic Pressure ({{readings.0.systolic}} mmHg):** Explain what it means (e.g., "This is the pressure when your heart beats."). Classify it based on the AHA/CDC categories provided above.
           *   Contextualize based on body position and exercise:
               *   If '{{readings.0.exerciseContext}}' is 'Post-Exercise': "It's common for systolic pressure to be higher after exercise as your body recovers."
               *   If '{{readings.0.bodyPosition}}' is 'Standing': "Standing can sometimes slightly raise or lower blood pressure for some individuals. If this is a consistent pattern, it's worth noting."
-      *   **Diastolic Pressure ({{readings.0.diastolic}} mmHg):** Explain what it means (e.g., "This is the pressure when your heart rests between beats."). Classify it.
+      *   **Diastolic Pressure ({{readings.0.diastolic}} mmHg):** Explain what it means (e.g., "This is the pressure when your heart rests between beats."). Classify it based on AHA/CDC categories.
           *   Contextualize:
               *   If '{{readings.0.exerciseContext}}' is 'Post-Exercise': "A lower diastolic pressure can sometimes be seen after exercise as blood vessels relax. However, it should still be within a healthy range."
-      *   If '{{readings.0.symptoms.length}}' and not (eq readings.0.symptoms.0 "None"): Briefly acknowledge reported symptoms in relation to the reading, if appropriate (e.g., "The dizziness you reported could be related to this reading if it's unusually low for you, or it could be unrelated. It's worth monitoring.")
+      *   {{#if readings.0.hasDisplayableSymptoms}}Briefly acknowledge reported symptoms in relation to the reading, if appropriate (e.g., "The dizziness you reported could be related to this reading if it's unusually low for you, or it could be unrelated. It's worth monitoring.").{{/if}}
 
   2.  **Trend Analysis (If multiple readings are available):**
-      *   Provide a plain-language summary of overall trends in systolic and diastolic pressures over the last 30 days.
+      *   Provide a plain-language summary of overall trends in systolic and diastolic pressures over the last 30 days, referencing the AHA/CDC categories.
       *   Mention consistency or variability. "Your readings over the past month show..."
       *   Incorporate how the user's profile data (age, weight, gender, race/ethnicity, medicalConditions, medications), body position, exercise context, and reported symptoms might influence overall blood pressure patterns, according to general health knowledge and AHA/CDC guidelines.
 
   **Flags (For the 'flags' field - array of strings):**
-  *   List any flags based on the following AHA/CDC blood pressure categories. Apply these to individual readings or overall trends as appropriate.
-    - Normal: Systolic <120 mmHg AND Diastolic <80 mmHg.
-    - Elevated: Systolic 120–129 mmHg AND Diastolic <80 mmHg.
-    - Hypertension Stage 1: Systolic 130–139 mmHg OR Diastolic 80–89 mmHg.
-    - Hypertension Stage 2: Systolic ≥140 mmHg OR Diastolic ≥90 mmHg.
-    - Hypertensive Crisis: Systolic >180 mmHg AND/OR Diastolic >120 mmHg. (If this is flagged for any recent reading, make this the MOST prominent flag and strongly advise seeking immediate medical attention in suggestions).
+  *   List any flags based on the AHA/CDC blood pressure categories provided above. Apply these to individual readings or overall trends as appropriate.
   *   Consider body position and exercise context: A 'Post-Exercise' reading might be flagged differently or have an explanatory note. For example, flag as "Elevated (Post-Exercise)" if it's high but expected within a reasonable range post-activity.
-  *   If Hypertensive Crisis symptoms (like chest pain, shortness of breath, blurred vision, severe headache) are reported alongside very high readings, emphasize this in the flags.
+  *   If Hypertensive Crisis symptoms (like chest pain, shortness of breath, blurred vision, severe headache) are reported alongside very high readings, emphasize this in the flags and strongly advise seeking immediate medical attention in suggestions.
 
   **Suggestions & Next Steps (For the 'suggestions' field - array of strings):**
   1.  **"What to watch for":**
@@ -150,10 +153,14 @@ const analyzeBloodPressureTrendFlow = ai.defineFlow(
         console.warn(`Failed to format timestamp ${reading.timestamp}:`, e);
         formattedTimestamp = reading.timestamp;
       }
+      const symptomsArray = reading.symptoms || [];
+      const hasDisplayableSymptoms = symptomsArray.length > 0 && (symptomsArray.length > 1 || symptomsArray[0] !== "None");
+
       return {
         ...reading,
         formattedTimestamp: formattedTimestamp,
-        symptoms: reading.symptoms || [], // Ensure symptoms is an array
+        symptoms: symptomsArray, // Pass the original (or defaulted empty) symptoms array
+        hasDisplayableSymptoms: hasDisplayableSymptoms,
       };
     });
 
@@ -189,3 +196,6 @@ const analyzeBloodPressureTrendFlow = ai.defineFlow(
     };
   }
 );
+
+
+    
