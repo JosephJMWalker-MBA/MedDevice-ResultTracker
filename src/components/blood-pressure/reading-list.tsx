@@ -1,20 +1,27 @@
 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from '@/components/ui/table';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { type BloodPressureReading, type BodyPosition, type ExerciseContext, type TrendAnalysisResult, type Symptom } from '@/lib/types';
-import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell, Stethoscope } from 'lucide-react';
+'use client';
+
+import type { BloodPressureReading, TrendAnalysisResult, UserProfile } from '@/lib/types';
 import { format } from 'date-fns';
 import Papa from 'papaparse';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from '@/components/ui/table';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell, Stethoscope, HeartPulseIcon, Pencil, Trash2, MessageSquareText } from 'lucide-react';
 
 
 interface ReadingListProps {
   readings: BloodPressureReading[];
   analysis: TrendAnalysisResult | null;
+  userProfile: UserProfile | null;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
 const getBpCategory = (systolic: number, diastolic: number): { category: string; colorClass: string; Icon: React.ElementType } => {
@@ -27,7 +34,7 @@ const getBpCategory = (systolic: number, diastolic: number): { category: string;
   return { category: 'N/A', colorClass: 'text-muted-foreground', Icon: Activity };
 };
 
-const getBodyPositionIcon = (position: BodyPosition): React.ElementType => {
+const getBodyPositionIcon = (position: BloodPressureReading['bodyPosition']): React.ElementType => {
   switch (position) {
     case 'Sitting': return Sofa;
     case 'Standing': return PersonStanding;
@@ -37,7 +44,7 @@ const getBodyPositionIcon = (position: BodyPosition): React.ElementType => {
   }
 };
 
-const getExerciseContextIcon = (context: ExerciseContext): React.ElementType => {
+const getExerciseContextIcon = (context: BloodPressureReading['exerciseContext']): React.ElementType => {
   switch (context) {
     case 'Resting': return Dumbbell;
     case 'Pre-Exercise': return Zap;
@@ -48,9 +55,121 @@ const getExerciseContextIcon = (context: ExerciseContext): React.ElementType => 
 };
 
 
-export default function ReadingList({ readings, analysis }: ReadingListProps) {
+export default function ReadingList({ readings, analysis, userProfile, onEdit, onDelete }: ReadingListProps) {
   const { toast } = useToast();
   const disclaimerText = "⚠️ This is not medical advice. Consult a healthcare professional for any concerns.";
+
+  const generateReportText = (includeDisclaimer = true): string => {
+    let text = "";
+    if (readings.length > 0) {
+        text += "Blood Pressure Readings:\n";
+        readings.slice(0, 15).forEach(r => { // Limit for brevity in text share
+            text += `${format(new Date(r.timestamp), 'yyyy-MM-dd HH:mm')} - SYS: ${r.systolic}, DIA: ${r.diastolic}${r.pulse ? `, Pulse: ${r.pulse}` : ''}, Pos: ${r.bodyPosition}, Ex: ${r.exerciseContext}`;
+            if (r.symptoms && r.symptoms.length > 0 && r.symptoms[0] !== "None") {
+                text += `, Symptoms: ${r.symptoms.join(', ')}`;
+            }
+            text += '\n';
+        });
+        text += "\n";
+    }
+
+    if (analysis) {
+        text += "Trend Analysis Summary:\n";
+        if(analysis.summary) text += `${analysis.summary.replace(disclaimerText, '').trim()}\n\n`;
+        if (analysis.flags && analysis.flags.length > 0) {
+            text += "Flags:\n";
+            analysis.flags.forEach(f => text += `- ${f}\n`);
+            text += "\n";
+        }
+        if (analysis.suggestions && analysis.suggestions.length > 0) {
+            text += "Suggestions & Next Steps:\n";
+            analysis.suggestions.forEach(s => text += `- ${s}\n`);
+            text += "\n";
+        }
+    }
+    if (includeDisclaimer) {
+        text += `\n${disclaimerText}`;
+    }
+    return text.trim();
+  };
+
+  const shareViaTextOrApp = async () => {
+    if (readings.length === 0 && !analysis) {
+        toast({ variant: 'destructive', title: 'No Data', description: 'No readings or analysis to share.' });
+        return;
+    }
+
+    const reportText = generateReportText();
+    const shareData = {
+      title: 'My Blood Pressure Report',
+      text: reportText,
+      // url: window.location.href // Optional: share a link to the app
+    };
+
+    if (navigator.share) {
+      try {
+        // Try to share PDF first if available
+        const pdfBlob = await generatePdfBlob();
+        if (pdfBlob) {
+            const pdfFile = new File([pdfBlob], "blood_pressure_report.pdf", { type: "application/pdf" });
+            const fullShareData = { ...shareData, files: [pdfFile] };
+             if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+                await navigator.share(fullShareData);
+                toast({ title: 'Shared!', description: 'Report (PDF and text) sent to sharing target.' });
+                return;
+            }
+        }
+        // Fallback to text only if PDF cannot be shared or generated
+        await navigator.share(shareData);
+        toast({ title: 'Shared!', description: 'Report text sent to sharing target.' });
+
+      } catch (error: any) {
+        if (error.name !== 'AbortError') { // AbortError means user cancelled share
+          console.error('Error sharing:', error);
+          toast({ variant: 'destructive', title: 'Share Error', description: `Could not share: ${error.message}. Try copying the text.` });
+          // Fallback: copy text to clipboard
+          copyReportToClipboard(reportText);
+        }
+      }
+    } else {
+      // Fallback for browsers that don't support Web Share API
+      copyReportToClipboard(reportText);
+      toast({ title: 'Web Share Not Supported', description: 'Report text copied to clipboard. Please paste it into your messaging app.' });
+    }
+  };
+
+  const copyReportToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+        toast({ title: 'Copied to Clipboard', description: 'Report text copied successfully.' });
+    }).catch(err => {
+        console.error('Failed to copy text: ', err);
+        toast({ variant: 'destructive', title: 'Copy Failed', description: 'Could not copy report text.' });
+    });
+  };
+
+
+  const generatePdfBlob = async (): Promise<Blob | null> => {
+    if (readings.length === 0 && !analysis) {
+      return null;
+    }
+    const doc = new jsPDF();
+    // ... (rest of PDF generation logic, returning doc.output('blob') )
+    // This needs to be refactored from exportToPDF to be callable
+    // For brevity, I'll skip pasting the full PDF generation code here again.
+    // It would be the same as in exportToPDF but ending with `return doc.output('blob');`
+    // Assume exportToPDF is refactored to allow this.
+    // For this example, let's simulate it:
+     try {
+        const tempDoc = exportToPDF(true); // Assume exportToPDF can return a blob or instance
+        if (tempDoc instanceof jsPDF) { // If exportToPDF was refactored to return the instance
+           return tempDoc.output('blob');
+        } else if (tempDoc instanceof Blob) { // If it directly returned a blob
+           return tempDoc;
+        }
+     } catch (e) { console.error("PDF blob generation failed", e); }
+     return null;
+  };
+
 
   const exportToCSV = () => {
     if (readings.length === 0 && (!analysis || !analysis.summary)) {
@@ -62,6 +181,7 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
       Time: format(new Date(r.timestamp), 'HH:mm:ss'),
       Systolic: r.systolic,
       Diastolic: r.diastolic,
+      Pulse: r.pulse ?? '', // Added
       'Body Position': r.bodyPosition,
       'Exercise Context': r.exerciseContext,
       'Symptoms': r.symptoms && r.symptoms.length > 0 && r.symptoms[0] !== "None" ? r.symptoms.join(', ') : '',
@@ -69,8 +189,6 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
 
     let csvContent = Papa.unparse(dataToExport);
     let analysisSummaryText = "";
-    let analysisFlagsText = "";
-    let analysisSuggestionsText = "";
 
     if (analysis) {
         if (analysis.summary) {
@@ -78,12 +196,12 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
             csvContent += `\n\nTrend Analysis Summary:\n"${analysisSummaryText.replace(/"/g, '""')}"`;
         }
         if (analysis.flags && analysis.flags.length > 0) {
-            analysisFlagsText = analysis.flags.map(f => `"${f.replace(/"/g, '""')}"`).join('\n');
+            const analysisFlagsText = analysis.flags.map(f => `"${f.replace(/"/g, '""')}"`).join('\n');
             csvContent += `\n\nFlags:\n${analysisFlagsText}`;
         }
         if (analysis.suggestions && analysis.suggestions.length > 0) {
-            analysisSuggestionsText = analysis.suggestions.map(s => `"${s.replace(/"/g, '""')}"`).join('\n');
-            csvContent += `\n\nSuggestions:\n${analysisSuggestionsText}`;
+            const analysisSuggestionsText = analysis.suggestions.map(s => `"${s.replace(/"/g, '""')}"`).join('\n');
+            csvContent += `\n\nSuggestions & Next Steps:\n${analysisSuggestionsText}`;
         }
     }
     csvContent += `\n\n${disclaimerText}`;
@@ -101,48 +219,41 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
     toast({ title: 'Export Successful', description: 'Readings and analysis report exported to CSV.' });
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = (returnInstance = false): jsPDF | Blob | void => {
     if (readings.length === 0 && !analysis) {
-      toast({ variant: 'destructive', title: 'No Data', description: 'No readings or analysis to export.' });
+      if (!returnInstance) toast({ variant: 'destructive', title: 'No Data', description: 'No readings or analysis to export.' });
       return;
     }
     const doc = new jsPDF();
     let startY = 20;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    const bottomMarginForDisclaimer = 25; // Ensure enough space
 
-    // Helper function to add disclaimer to the current page
     const addDisclaimerToCurrentPage = (docInstance: jsPDF, text: string) => {
-      const pageHeight = docInstance.internal.pageSize.getHeight();
-      const pageWidth = docInstance.internal.pageSize.getWidth();
-      const margin = 14; 
-      const bottomOffset = 10; 
-      const currentFontSize = docInstance.getFontSize();
-      docInstance.setFontSize(8);
-    
-      const disclaimerLines = docInstance.splitTextToSize(text, pageWidth - margin * 2);
-      // Calculate approximate height of the disclaimer text block
-      let textHeight = 0;
-      if (disclaimerLines && Array.isArray(disclaimerLines)) {
-          textHeight = disclaimerLines.length * 3.5; // Approximate height based on line spacing for 8pt font
-      } else if (typeof disclaimerLines === 'string') {
-          textHeight = 3.5; // Single line
-      }
-      
-      docInstance.text(disclaimerLines, margin, pageHeight - bottomOffset - textHeight);
-      docInstance.setFontSize(currentFontSize); // Restore original font size
+        const currentFontSize = docInstance.getFontSize();
+        docInstance.setFontSize(8);
+        const disclaimerLinesUnsafe = docInstance.splitTextToSize(text, pageWidth - margin * 2);
+        const disclaimerLines: string[] = Array.isArray(disclaimerLinesUnsafe) ? disclaimerLinesUnsafe : [disclaimerLinesUnsafe];
+        let textHeight = disclaimerLines.length * 3.5; 
+        
+        docInstance.text(disclaimerLines, margin, pageHeight - (margin/2) - textHeight);
+        docInstance.setFontSize(currentFontSize);
     };
 
 
     doc.setFontSize(16);
-    doc.text('Blood Pressure Report - PressureTrack AI', doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
+    doc.text('Blood Pressure Report - PressureTrack AI', pageWidth / 2, 15, { align: 'center' });
     startY = 25;
 
 
     if (readings.length > 0) {
         doc.setFontSize(12);
-        doc.text('Readings History', 14, startY);
+        doc.text('Readings History', margin, startY);
         startY += 7;
 
-        const tableColumn = ["Date", "Time", "SYS", "DIA", "Position", "Exercise", "Symptoms"];
+        const tableColumn = ["Date", "Time", "SYS", "DIA", "Pulse", "Position", "Exercise", "Symptoms"];
         const tableRows: any[][] = [];
 
         readings.forEach(reading => {
@@ -151,6 +262,7 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
             format(new Date(reading.timestamp), 'HH:mm'),
             reading.systolic,
             reading.diastolic,
+            reading.pulse ?? 'N/A', // Added
             reading.bodyPosition,
             reading.exerciseContext,
             reading.symptoms && reading.symptoms.length > 0 && reading.symptoms[0] !== "None" ? reading.symptoms.join(', ') : '',
@@ -163,82 +275,82 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
             body: tableRows,
             startY: startY,
             theme: 'grid',
-            headStyles: { fillColor: [34, 102, 153] }, // Example: A calm blue
-            margin: { bottom: 25 } // Increased bottom margin to ensure space for disclaimer added by the loop
+            headStyles: { fillColor: [34, 102, 153] },
+            margin: { top: startY, left: margin, right: margin, bottom: bottomMarginForDisclaimer } 
         });
         startY = (doc as any).lastAutoTable.finalY + 10;
     }
 
 
     if (analysis) {
-        if (startY > doc.internal.pageSize.getHeight() - 30) { 
-            doc.addPage();
-            startY = 20;
-        }
-        doc.setFontSize(14);
-        doc.text('Trend Analysis Report', 14, startY);
-        startY += 10;
+        const checkAndAddPage = () => {
+            if (startY > pageHeight - bottomMarginForDisclaimer - 20) { // Check if space for title + one line + margin
+                doc.addPage();
+                startY = margin + 5;
+            }
+        };
 
+        checkAndAddPage();
+        doc.setFontSize(14);
+        doc.text('Trend Analysis Report', margin, startY);
+        startY += 10;
         doc.setFontSize(11);
 
         const addSection = (title: string, content: string | string[]) => {
-            // Ensure enough space for section title + at least one line of content + footer
-            if (startY > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); startY = 20; }
+            checkAndAddPage();
             doc.setFont(undefined, 'bold');
-            doc.text(title, 14, startY);
+            doc.text(title, margin, startY);
             startY += 6;
             doc.setFont(undefined, 'normal');
             
             const contentToProcess = typeof content === 'string' ? content.replace(disclaimerText, '').trim() : content;
 
             if (typeof contentToProcess === 'string') {
-                const lines = doc.splitTextToSize(contentToProcess, doc.internal.pageSize.getWidth() - 28); // 14 margin on each side
-                lines.forEach((line: string, index: number) => {
-                    if (startY + 5 > doc.internal.pageSize.getHeight() - 25) { // Check before drawing each line
+                const linesUnsafe = doc.splitTextToSize(contentToProcess, pageWidth - margin * 2);
+                const lines: string[] = Array.isArray(linesUnsafe) ? linesUnsafe : [linesUnsafe];
+                lines.forEach((line: string) => {
+                    if (startY + 5 > pageHeight - bottomMarginForDisclaimer) { 
                         doc.addPage();
-                        startY = 20;
+                        startY = margin + 5;
                     }
-                    doc.text(line, 14, startY);
+                    doc.text(line, margin, startY);
                     startY += 5;
                 });
-                startY += 4; // Extra space after section
+                startY += 4; 
             } else if (Array.isArray(contentToProcess)) {
                 contentToProcess.forEach(item => {
-                    const itemLines = doc.splitTextToSize(`• ${item}`, doc.internal.pageSize.getWidth() - 32); // 16 margin for bullet point
-                    itemLines.forEach((line: string, index: number) => {
-                         if (startY + 5 > doc.internal.pageSize.getHeight() - 25) { // Check before drawing each line
+                    const itemLinesUnsafe = doc.splitTextToSize(`• ${item}`, pageWidth - (margin * 2) - 4); // -4 for bullet
+                    const itemLines : string[] = Array.isArray(itemLinesUnsafe) ? itemLinesUnsafe : [itemLinesUnsafe];
+                    itemLines.forEach((line: string) => {
+                         if (startY + 5 > pageHeight - bottomMarginForDisclaimer) {
                             doc.addPage();
-                            startY = 20;
+                            startY = margin + 5;
                         }
-                        doc.text(line, 16, startY);
+                        doc.text(line, margin + 2, startY); // Indent bullet
                         startY += 5;
                     });
-                    startY += 1; // Space after bullet item
+                    startY += 1;
                 });
-                startY += 3; // Extra space after list
+                startY += 3; 
             }
         };
 
-        if (analysis.summary) {
-            addSection('Summary:', analysis.summary);
-        }
-        if (analysis.flags && analysis.flags.length > 0) {
-            addSection('Flags:', analysis.flags);
-        }
-        if (analysis.suggestions && analysis.suggestions.length > 0) {
-            addSection('Suggestions & Next Steps:', analysis.suggestions);
-        }
+        if (analysis.summary) addSection('Summary:', analysis.summary);
+        if (analysis.flags && analysis.flags.length > 0) addSection('Flags:', analysis.flags);
+        if (analysis.suggestions && analysis.suggestions.length > 0) addSection('Suggestions & Next Steps:', analysis.suggestions);
     }
     
-    // Add disclaimer to all pages
     const totalPages = (doc as any).internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
       addDisclaimerToCurrentPage(doc, disclaimerText);
     }
 
+    if (returnInstance) {
+        return doc.output('blob'); // Or just doc if that's what shareViaTextOrApp expects
+    }
     doc.save('blood_pressure_report.pdf');
-    toast({ title: 'Export Successful', description: 'Readings and analysis report exported to PDF.' });
+    if (!returnInstance) toast({ title: 'Export Successful', description: 'Readings and analysis report exported to PDF.' });
   };
 
   const shareViaEmail = () => {
@@ -247,40 +359,22 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
         return;
     }
     const subject = "My Blood Pressure Report from PressureTrack AI";
-    let body = "Hello,\n\nPlease find my blood pressure report from PressureTrack AI below.\n\n";
+    const body = generateReportText();
+    
+    let mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-    if (readings.length > 0) {
-        body += "==== Recent Readings (up to 10) ====\n";
-        const recentReadings = readings.slice(0, 10);
-        recentReadings.forEach(r => {
-            body += `${format(new Date(r.timestamp), 'yyyy-MM-dd HH:mm')} - SYS: ${r.systolic}, DIA: ${r.diastolic}, Pos: ${r.bodyPosition}, Ex: ${r.exerciseContext}`;
-            if (r.symptoms && r.symptoms.length > 0 && r.symptoms[0] !== "None") {
-                body += `, Symptoms: ${r.symptoms.join(', ')}`;
-            }
-            body += '\n';
-        });
-        body += "\n";
+    if (userProfile?.preferredMailClient === "Gmail") {
+        mailtoLink = `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    } else if (userProfile?.preferredMailClient === "Outlook.com") {
+        // Outlook.com deeplink for compose
+        mailtoLink = `https://outlook.live.com/mail/0/deeplink/compose?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     }
+    // For "Default (mailto:)", the initial mailtoLink is used.
 
-    if (analysis) {
-        body += "==== Trend Analysis ====\n";
-        if(analysis.summary) body += `Summary:\n${analysis.summary.replace(disclaimerText, '').trim()}\n\n`;
-        if (analysis.flags && analysis.flags.length > 0) {
-            body += "Flags:\n";
-            analysis.flags.forEach(f => body += `- ${f}\n`);
-            body += "\n";
-        }
-        if (analysis.suggestions && analysis.suggestions.length > 0) {
-            body += "Suggestions & Next Steps:\n";
-            analysis.suggestions.forEach(s => body += `- ${s}\n`);
-            body += "\n";
-        }
+    if (typeof window !== "undefined") {
+        window.open(mailtoLink, '_blank');
+        toast({ title: 'Email Draft Opened', description: 'Your email client/tab should open with a draft.' });
     }
-
-    body += `\nBest regards,\n\nGenerated by PressureTrack AI.\n${disclaimerText}`;
-    const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailtoLink;
-    toast({ title: 'Email Draft Opened', description: 'Your email client should open with a draft.' });
   };
 
   if (readings.length === 0) {
@@ -316,10 +410,12 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
             <TableRow>
               <TableHead className="w-[150px]">Date & Time</TableHead>
               <TableHead>SYS/DIA</TableHead>
+              <TableHead className="hidden sm:table-cell">Pulse</TableHead>
               <TableHead>Category</TableHead>
               <TableHead className="hidden sm:table-cell">Position</TableHead>
               <TableHead className="hidden md:table-cell">Exercise</TableHead>
               <TableHead className="hidden lg:table-cell">Symptoms</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -334,6 +430,7 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
                     <div className="text-xs text-muted-foreground">{format(new Date(reading.timestamp), 'p')}</div>
                   </TableCell>
                   <TableCell className="font-medium">{reading.systolic}/{reading.diastolic}</TableCell>
+                  <TableCell className="hidden sm:table-cell">{reading.pulse ? `${reading.pulse} bpm` : 'N/A'}</TableCell>
                   <TableCell className={`${colorClass} font-medium flex items-center gap-1`}>
                     <BPCategoryIcon className="h-4 w-4"/> {category}
                   </TableCell>
@@ -360,6 +457,35 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
                         <span className="text-muted-foreground">N/A</span>
                     )}
                     </TableCell>
+                    <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => onEdit(reading.id)} title="Edit Reading">
+                            <Pencil className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" title="Delete Reading">
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This action cannot be undone. This will permanently delete this blood pressure reading.
+                                </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={() => onDelete(reading.id)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                    Delete
+                                </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    </TableCell>
                 </TableRow>
               );
             })}
@@ -367,16 +493,21 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
            {readings.length > 5 && <TableCaption>Scroll for more readings.</TableCaption>}
         </Table>
       </CardContent>
-      <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
+      <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 pt-4 flex-wrap">
           <Button variant="outline" onClick={exportToCSV} disabled={readings.length === 0 && !analysis}>
             <FileText className="mr-2 h-4 w-4" /> Export to CSV
           </Button>
-          <Button variant="outline" onClick={exportToPDF} disabled={readings.length === 0 && !analysis}>
+          <Button variant="outline" onClick={() => exportToPDF()} disabled={readings.length === 0 && !analysis}>
             <FileArchive className="mr-2 h-4 w-4" /> Export to PDF
           </Button>
           <Button variant="outline" onClick={shareViaEmail} disabled={readings.length === 0 && !analysis}>
             <Mail className="mr-2 h-4 w-4" /> Share via Email
           </Button>
+          {typeof navigator !== 'undefined' && navigator.share && (
+            <Button variant="outline" onClick={shareViaTextOrApp} disabled={readings.length === 0 && !analysis}>
+              <MessageSquareText className="mr-2 h-4 w-4" /> Share Text/App
+            </Button>
+          )}
           <Button variant="outline" disabled title="Secure shareable link (Coming Soon)">
             <Link2 className="mr-2 h-4 w-4" /> Secure Link (Soon)
           </Button>
@@ -384,4 +515,3 @@ export default function ReadingList({ readings, analysis }: ReadingListProps) {
     </Card>
   );
 }
-

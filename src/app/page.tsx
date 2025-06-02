@@ -14,18 +14,23 @@ import DisclaimerAlert from '@/components/blood-pressure/disclaimer-alert';
 import BpChart from '@/components/blood-pressure/bp-chart';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart3, TrendingUp } from 'lucide-react';
+import { BarChart3, TrendingUp, FileScan } from 'lucide-react';
 import type { AnalyzeBloodPressureTrendInput } from '@/ai/flows/analyze-blood-pressure-trend';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 
 export default function HomePage() {
   const [readings, setReadings] = useState<BloodPressureReading[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [analysis, setAnalysis] = useState<TrendAnalysisResult | null>(null);
-  const [isLoadingOcr, setIsLoadingOcr] = useState(false);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const { toast } = useToast();
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [currentEditingReading, setCurrentEditingReading] = useState<BloodPressureReading | null>(null);
+
 
   const triggerAnalysis = useCallback(async (currentReadings: BloodPressureReading[], profile: UserProfile | null) => {
     const thirtyDaysAgo = new Date();
@@ -52,6 +57,7 @@ export default function HomePage() {
           timestamp: r.timestamp,
           systolic: r.systolic,
           diastolic: r.diastolic,
+          pulse: r.pulse, // Added
           bodyPosition: r.bodyPosition || BodyPositionOptions[0],
           exerciseContext: r.exerciseContext || ExerciseContextOptions[0],
           symptoms: r.symptoms || [],
@@ -89,9 +95,10 @@ export default function HomePage() {
           timestamp: reading.timestamp || new Date().toISOString(),
           systolic: typeof reading.systolic === 'number' ? reading.systolic : 0,
           diastolic: typeof reading.diastolic === 'number' ? reading.diastolic : 0,
+          pulse: typeof reading.pulse === 'number' ? reading.pulse : undefined, // Added
           bodyPosition: BodyPositionOptions.includes(reading.bodyPosition) ? reading.bodyPosition : BodyPositionOptions[0],
           exerciseContext: ExerciseContextOptions.includes(reading.exerciseContext) ? reading.exerciseContext : ExerciseContextOptions[0],
-          symptoms: Array.isArray(reading.symptoms) ? reading.symptoms : [], // Heal symptoms
+          symptoms: Array.isArray(reading.symptoms) ? reading.symptoms : [],
         })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       }
       setReadings(loadedReadings);
@@ -130,27 +137,108 @@ export default function HomePage() {
     }
   }, [readings, isInitialLoad, toast]);
 
-  const handleAddReading = (data: ReadingFormData) => {
-    const newReading: BloodPressureReading = {
-      id: Date.now().toString() + Math.random().toString(36).substring(2,9),
-      timestamp: new Date(`${data.date}T${data.time}`).toISOString(),
-      systolic: data.systolic,
-      diastolic: data.diastolic,
-      bodyPosition: data.bodyPosition,
-      exerciseContext: data.exerciseContext,
-      symptoms: data.symptoms || [],
-    };
-    const updatedReadings = [...readings, newReading].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    setReadings(updatedReadings);
+  const handleFormSubmit = (data: ReadingFormData) => {
+    if (currentEditingReading) { // Handle update
+      const updatedReadings = readings.map(r =>
+        r.id === currentEditingReading.id
+          ? {
+              ...r, // Keep original ID and other non-form fields
+              timestamp: new Date(`${data.date}T${data.time}`).toISOString(),
+              systolic: data.systolic,
+              diastolic: data.diastolic,
+              pulse: data.pulse ?? undefined,
+              bodyPosition: data.bodyPosition,
+              exerciseContext: data.exerciseContext,
+              symptoms: data.symptoms || [],
+            }
+          : r
+      ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setReadings(updatedReadings);
+      toast({ title: 'Reading Updated', description: 'Your blood pressure reading has been updated.' });
+      setShowEditModal(false);
+      setCurrentEditingReading(null);
+    } else { // Handle add new
+      const newReading: BloodPressureReading = {
+        id: Date.now().toString() + Math.random().toString(36).substring(2,9),
+        timestamp: new Date(`${data.date}T${data.time}`).toISOString(),
+        systolic: data.systolic,
+        diastolic: data.diastolic,
+        pulse: data.pulse ?? undefined,
+        bodyPosition: data.bodyPosition,
+        exerciseContext: data.exerciseContext,
+        symptoms: data.symptoms || [],
+      };
+      const updatedReadings = [...readings, newReading].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setReadings(updatedReadings);
+      toast({ title: 'Reading Added', description: 'Your blood pressure reading has been saved.' });
+    }
   };
+
+  const handleOpenEditModal = (id: string) => {
+    const readingToEdit = readings.find(r => r.id === id);
+    if (readingToEdit) {
+      setCurrentEditingReading(readingToEdit);
+      setShowEditModal(true);
+    }
+  };
+
+  const handleDeleteReading = (id: string) => {
+    const updatedReadings = readings.filter(r => r.id !== id);
+    setReadings(updatedReadings);
+    toast({ title: 'Reading Deleted', description: 'The blood pressure reading has been removed.' });
+  };
+  
+  const editingReadingFormData: ReadingFormData | undefined = currentEditingReading ? {
+    date: currentEditingReading.timestamp.split('T')[0],
+    time: new Date(currentEditingReading.timestamp).toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+    systolic: currentEditingReading.systolic,
+    diastolic: currentEditingReading.diastolic,
+    pulse: currentEditingReading.pulse ?? null, // Ensure it's null if undefined for the form
+    bodyPosition: currentEditingReading.bodyPosition,
+    exerciseContext: currentEditingReading.exerciseContext,
+    symptoms: currentEditingReading.symptoms || [],
+    // imageFile is not directly editable here, typically users would re-upload or just edit data
+  } : undefined;
+
 
   return (
     <div className="container mx-auto max-w-4xl p-4 md:p-8 space-y-8">
-      <ReadingForm
-        onReadingAdded={handleAddReading}
-        isLoadingOcrParent={isLoadingOcr}
-        setIsLoadingOcrParent={setIsLoadingOcr}
-      />
+      {!showEditModal && (
+         <ReadingForm
+            onFormSubmit={handleFormSubmit}
+            isLoadingExternally={isLoadingAnalysis}
+        />
+      )}
+
+      <Dialog open={showEditModal} onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setShowEditModal(false);
+            setCurrentEditingReading(null);
+          } else {
+            setShowEditModal(true);
+          }
+        }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><FileScan className="h-6 w-6 text-primary"/>Edit Blood Pressure Reading</DialogTitle>
+            <DialogDescription>
+              Make changes to your existing blood pressure reading. Click "Update Reading" to save.
+            </DialogDescription>
+          </DialogHeader>
+          {currentEditingReading && editingReadingFormData && (
+            <ReadingForm
+              onFormSubmit={handleFormSubmit}
+              initialData={editingReadingFormData}
+              isEditing={true}
+              isLoadingExternally={isLoadingAnalysis}
+            />
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowEditModal(false); setCurrentEditingReading(null); }}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {isInitialLoad || (readings.length === 0 && !isLoadingAnalysis) ? (
         <Card className="shadow-lg" id="bp-chart-card">
@@ -201,7 +289,15 @@ export default function HomePage() {
           </CardContent>
         </Card>
       ) : (
-         <div id="reading-list-card"><ReadingList readings={readings} analysis={analysis} /></div>
+         <div id="reading-list-card">
+            <ReadingList 
+                readings={readings} 
+                analysis={analysis}
+                userProfile={userProfile}
+                onEdit={handleOpenEditModal}
+                onDelete={handleDeleteReading}
+            />
+        </div>
       )}
 
       <DisclaimerAlert />

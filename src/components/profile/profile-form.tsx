@@ -10,9 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { UserProfileFormData, UserProfileSchema, RaceEthnicityOptions, GenderOptions, UserProfile } from '@/lib/types';
+import { UserProfileFormData, UserProfileSchema, RaceEthnicityOptions, GenderOptions, UserProfile, PreferredMailClientOptions, PreferredMailClient } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { Save, UserCog, BellRing, BellOff } from 'lucide-react';
+import { Save, UserCog, BellRing, BellOff, Mail } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function ProfileForm() {
@@ -27,14 +27,14 @@ export default function ProfileForm() {
       weightLbs: null,
       raceEthnicity: null,
       gender: null,
-      medicalConditions: '', // Textarea expects a string; schema handles conversion
+      medicalConditions: '', 
       medications: '',
       preferredReminderTime: null,
+      preferredMailClient: null,
     },
   });
 
   useEffect(() => {
-    // This effect runs once on client mount to load data and set initial permissions
     if (typeof window !== 'undefined') {
       if ('Notification' in window) {
         setNotificationPermission(Notification.permission);
@@ -52,6 +52,7 @@ export default function ProfileForm() {
               medicalConditions: Array.isArray(storedProfile.medicalConditions) ? storedProfile.medicalConditions.join(', ') : (storedProfile.medicalConditions || ''),
               medications: storedProfile.medications || '',
               preferredReminderTime: storedProfile.preferredReminderTime || null,
+              preferredMailClient: storedProfile.preferredMailClient || null,
             });
           }
         }
@@ -63,7 +64,7 @@ export default function ProfileForm() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array ensures this runs only once on client mount
+  }, []); 
 
   const handleRequestPermission = async () => {
     if (typeof window === 'undefined' || !('Notification' in window)) {
@@ -91,7 +92,7 @@ export default function ProfileForm() {
       reminderTimeoutIdRef.current = null;
     }
     
-    if (typeof window === 'undefined') return; // Ensure window context for new Date() and Notification
+    if (typeof window === 'undefined') return; 
 
     const preferredReminderTimeValue = form.getValues('preferredReminderTime');
 
@@ -112,18 +113,17 @@ export default function ProfileForm() {
             if ('Notification' in window && Notification.permission === 'granted') {
               new Notification('PressureTrack AI Reminder', {
                 body: 'Time to take your blood pressure reading!',
-                // icon: '/icon.png', 
               });
             }
           } catch (e) {
             console.error("Error showing notification:", e)
           }
-          scheduleReminder(); // Reschedule for the next occurrence
+          scheduleReminder(); 
         }, delay);
         reminderTimeoutIdRef.current = newTimeoutId;
       }
     }
-  }, [notificationPermission, form]); // form is stable, getValues is used
+  }, [notificationPermission, form]);
 
   useEffect(() => {
     scheduleReminder();
@@ -149,6 +149,7 @@ export default function ProfileForm() {
         medicalConditions: medicalConditionsArray,
         medications: data.medications || null,
         preferredReminderTime: data.preferredReminderTime || null,
+        preferredMailClient: data.preferredMailClient || null,
       };
       if (typeof window !== 'undefined') {
         localStorage.setItem('bpUserProfile', JSON.stringify(profileToSave));
@@ -165,7 +166,6 @@ export default function ProfileForm() {
     }
   };
   
-  // Convert array from UserProfile to string for Textarea, and handle null/undefined
   const medicalConditionsValue = form.watch('medicalConditions');
   const medicalConditionsForTextarea = Array.isArray(medicalConditionsValue) 
     ? medicalConditionsValue.join(', ') 
@@ -272,8 +272,8 @@ export default function ProfileForm() {
                     <Textarea
                       placeholder="List any existing medical conditions, separated by commas (e.g., Diabetes, Asthma)"
                       {...field}
-                      value={medicalConditionsForTextarea} // Use the derived string value
-                      onChange={e => field.onChange(e.target.value)} // Store string in form state
+                      value={medicalConditionsForTextarea}
+                      onChange={e => field.onChange(e.target.value)} 
                     />
                   </FormControl>
                   <FormDescription>Separate multiple conditions with a comma.</FormDescription>
@@ -300,6 +300,34 @@ export default function ProfileForm() {
                 </FormItem>
               )}
             />
+
+            <FormField
+                control={form.control}
+                name="preferredMailClient"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1">
+                        <Mail className="h-4 w-4 text-muted-foreground" />
+                        Preferred Email Sharing Method
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value ?? undefined} defaultValue={field.value ?? undefined}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select email client" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {PreferredMailClientOptions.map(option => (
+                          <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>Choose how "Share via Email" opens your email.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
 
             <FormField
               control={form.control}
@@ -368,4 +396,3 @@ export default function ProfileForm() {
     </Card>
   );
 }
-

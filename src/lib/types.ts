@@ -17,12 +17,13 @@ export interface BloodPressureReading {
   timestamp: string;
   systolic: number;
   diastolic: number;
+  pulse?: number; // Added
   bodyPosition: BodyPosition;
   exerciseContext: ExerciseContext;
-  symptoms?: Symptom[]; // Added
+  symptoms?: Symptom[];
 }
 
-export type OcrData = ExtractBloodPressureDataOutput;
+export type OcrData = ExtractBloodPressureDataOutput; // Assumes OCR output might not have pulse yet
 
 export type TrendAnalysisResult = AnalyzeBloodPressureTrendOutput;
 
@@ -42,9 +43,10 @@ export const ReadingFormSchema = z.object({
   time: z.string().min(1, "Time is required"),
   systolic: z.coerce.number({invalid_type_error: "Systolic must be a number"}).positive("Systolic pressure must be positive"),
   diastolic: z.coerce.number({invalid_type_error: "Diastolic must be a number"}).positive("Diastolic pressure must be positive"),
+  pulse: z.coerce.number({invalid_type_error: "Pulse must be a number"}).positive("Pulse must be positive").optional().nullable(), // Added
   bodyPosition: z.enum(BodyPositionOptions, { required_error: "Body position is required." }),
   exerciseContext: z.enum(ExerciseContextOptions, { required_error: "Exercise context is required." }),
-  symptoms: z.array(z.enum(StaticSymptomsList)).optional(), // Added
+  symptoms: z.array(z.enum(StaticSymptomsList)).optional(),
 });
 
 export type ReadingFormData = z.infer<typeof ReadingFormSchema>;
@@ -72,34 +74,36 @@ export const GenderOptions = [
 ] as const;
 export type Gender = typeof GenderOptions[number] | null;
 
+export const PreferredMailClientOptions = ["Default (mailto:)", "Gmail", "Outlook.com"] as const;
+export type PreferredMailClient = typeof PreferredMailClientOptions[number] | null;
+
 
 export interface UserProfile {
   age?: number | null;
   weightLbs?: number | null;
   raceEthnicity?: RaceEthnicity;
   gender?: Gender;
-  medicalConditions?: string[]; // Stored as array
+  medicalConditions?: string[];
   medications?: string | null;
   preferredReminderTime?: string | null;
+  preferredMailClient?: PreferredMailClient; // Added
 }
 
-// Schema for form data validation
 export const UserProfileSchema = z.object({
   age: z.coerce.number().positive("Age must be a positive number.").optional().nullable(),
   weightLbs: z.coerce.number().positive("Weight must be a positive number.").optional().nullable(),
   raceEthnicity: z.enum(RaceEthnicityOptions).optional().nullable(),
   gender: z.enum(GenderOptions).optional().nullable(),
-  medicalConditions: z.string().optional().nullable(), // Input as string, converted on save/load
+  medicalConditions: z.string().optional().nullable(),
   medications: z.string().optional().nullable(),
   preferredReminderTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format. Use HH:MM.")
     .optional()
     .nullable(),
+  preferredMailClient: z.enum(PreferredMailClientOptions).optional().nullable(), // Added
 });
 
 export type UserProfileFormData = z.infer<typeof UserProfileSchema>;
 
-// Internal representation type for when medicalConditions is a string (e.g., in form state before submission)
-// This helps distinguish from the UserProfile where it's an array.
 export type UserProfileFormDataInternal = UserProfileFormData & {
-  medicalConditions?: string | null; // Explicitly string for Textarea
+  medicalConditions?: string | null;
 };
