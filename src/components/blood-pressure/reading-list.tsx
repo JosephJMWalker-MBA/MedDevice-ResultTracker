@@ -34,7 +34,7 @@ const getBpCategory = (systolic: number, diastolic: number): { category: string;
   return { category: 'N/A', colorClass: 'text-muted-foreground', Icon: Activity };
 };
 
-const getBodyPositionIcon = (position: BloodPressureReading['bodyPosition']): React.ElementType => {
+const getBodyPositionIcon = (position?: BloodPressureReading['bodyPosition']): React.ElementType => {
   switch (position) {
     case 'Sitting': return Sofa;
     case 'Standing': return PersonStanding;
@@ -44,12 +44,12 @@ const getBodyPositionIcon = (position: BloodPressureReading['bodyPosition']): Re
   }
 };
 
-const getExerciseContextIcon = (context: BloodPressureReading['exerciseContext']): React.ElementType => {
+const getExerciseContextIcon = (context?: BloodPressureReading['exerciseContext']): React.ElementType => {
   switch (context) {
-    case 'Resting': return Dumbbell;
-    case 'Pre-Exercise': return Zap;
-    case 'During Exercise': return Bike;
-    case 'Post-Exercise': return ThermometerSun;
+    case 'Resting': return Dumbbell; // Changed from Stethoscope for resting exercise context
+    case 'Pre-Exercise': return Zap; // Changed from Bike for pre-exercise
+    case 'During Exercise': return Bike; // Keep Bike for during
+    case 'Post-Exercise': return ThermometerSun; // Keep ThermometerSun for post
     default: return HelpCircleIcon;
   }
 };
@@ -62,9 +62,9 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
   const generateReportText = (includeDisclaimer = true): string => {
     let text = "";
     if (readings.length > 0) {
-        text += "Blood Pressure Readings:\n";
-        readings.slice(0, 15).forEach(r => { // Limit for brevity in text share
-            text += `${format(new Date(r.timestamp), 'yyyy-MM-dd HH:mm')} - SYS: ${r.systolic}, DIA: ${r.diastolic}${r.pulse ? `, Pulse: ${r.pulse}` : ''}, Pos: ${r.bodyPosition}, Ex: ${r.exerciseContext}`;
+        text += "Blood Pressure Readings (most recent first, up to 15 shown):\n";
+        readings.slice(0, 15).forEach(r => {
+            text += `${format(new Date(r.timestamp), 'yyyy-MM-dd HH:mm')} - SYS: ${r.systolic}, DIA: ${r.diastolic}${r.pulse ? `, Pulse: ${r.pulse} bpm` : ''}, Pos: ${r.bodyPosition}, Ex: ${r.exerciseContext}`;
             if (r.symptoms && r.symptoms.length > 0 && r.symptoms[0] !== "None") {
                 text += `, Symptoms: ${r.symptoms.join(', ')}`;
             }
@@ -75,7 +75,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
 
     if (analysis) {
         text += "Trend Analysis Summary:\n";
-        if(analysis.summary) text += `${analysis.summary.replace(disclaimerText, '').trim()}\n\n`;
+        if(analysis.summary) text += `${analysis.summary.replace(disclaimerText, '').trim()}\n\n`; // Remove disclaimer if present, then add at end
         if (analysis.flags && analysis.flags.length > 0) {
             text += "Flags:\n";
             analysis.flags.forEach(f => text += `- ${f}\n`);
@@ -83,7 +83,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
         }
         if (analysis.suggestions && analysis.suggestions.length > 0) {
             text += "Suggestions & Next Steps:\n";
-            analysis.suggestions.forEach(s => text += `- ${s}\n`);
+            analysis.suggestions.forEach(s => text += `- ${s.replace(/\[.*?\]/g, '').trim()}\n`); // Remove placeholders like [TREND_CHART] for text share
             text += "\n";
         }
     }
@@ -103,12 +103,10 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
     const shareData = {
       title: 'My Blood Pressure Report',
       text: reportText,
-      // url: window.location.href // Optional: share a link to the app
     };
 
-    if (navigator.share) {
+    if (typeof navigator !== 'undefined' && navigator.share) {
       try {
-        // Try to share PDF first if available
         const pdfBlob = await generatePdfBlob();
         if (pdfBlob) {
             const pdfFile = new File([pdfBlob], "blood_pressure_report.pdf", { type: "application/pdf" });
@@ -119,32 +117,50 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
                 return;
             }
         }
-        // Fallback to text only if PDF cannot be shared or generated
+        // Fallback to text only if PDF cannot be shared or generation failed
         await navigator.share(shareData);
         toast({ title: 'Shared!', description: 'Report text sent to sharing target.' });
 
       } catch (error: any) {
-        if (error.name !== 'AbortError') { // AbortError means user cancelled share
+        if (error.name === 'AbortError') {
+          // User cancelled the share operation
+          console.log('Share operation cancelled by user.');
+          toast({ title: 'Share Cancelled', description: 'The share operation was cancelled.' });
+        } else if (error.name === 'NotAllowedError') {
+          console.error('Share permission denied:', error);
+          toast({
+            variant: 'destructive',
+            title: 'Share Permission Denied',
+            description: 'Could not share because permission was denied by the browser. Report copied to clipboard as a fallback.',
+          });
+          copyReportToClipboard(reportText);
+        } else {
           console.error('Error sharing:', error);
-          toast({ variant: 'destructive', title: 'Share Error', description: `Could not share: ${error.message}. Try copying the text.` });
-          // Fallback: copy text to clipboard
+          toast({
+            variant: 'destructive',
+            title: 'Share Error',
+            description: `Could not share: ${error.message}. Report copied to clipboard as a fallback.`,
+          });
           copyReportToClipboard(reportText);
         }
       }
     } else {
-      // Fallback for browsers that don't support Web Share API
       copyReportToClipboard(reportText);
       toast({ title: 'Web Share Not Supported', description: 'Report text copied to clipboard. Please paste it into your messaging app.' });
     }
   };
 
   const copyReportToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-        toast({ title: 'Copied to Clipboard', description: 'Report text copied successfully.' });
-    }).catch(err => {
-        console.error('Failed to copy text: ', err);
-        toast({ variant: 'destructive', title: 'Copy Failed', description: 'Could not copy report text.' });
-    });
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            toast({ title: 'Copied to Clipboard', description: 'Report text copied successfully.' });
+        }).catch(err => {
+            console.error('Failed to copy text: ', err);
+            toast({ variant: 'destructive', title: 'Copy Failed', description: 'Could not copy report text.' });
+        });
+    } else {
+        toast({ variant: 'destructive', title: 'Copy Failed', description: 'Clipboard API not available.' });
+    }
   };
 
 
@@ -152,22 +168,10 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
     if (readings.length === 0 && !analysis) {
       return null;
     }
-    const doc = new jsPDF();
-    // ... (rest of PDF generation logic, returning doc.output('blob') )
-    // This needs to be refactored from exportToPDF to be callable
-    // For brevity, I'll skip pasting the full PDF generation code here again.
-    // It would be the same as in exportToPDF but ending with `return doc.output('blob');`
-    // Assume exportToPDF is refactored to allow this.
-    // For this example, let's simulate it:
-     try {
-        const tempDoc = exportToPDF(true); // Assume exportToPDF can return a blob or instance
-        if (tempDoc instanceof jsPDF) { // If exportToPDF was refactored to return the instance
-           return tempDoc.output('blob');
-        } else if (tempDoc instanceof Blob) { // If it directly returned a blob
-           return tempDoc;
-        }
-     } catch (e) { console.error("PDF blob generation failed", e); }
-     return null;
+    // Use a new instance of jsPDF for blob generation to avoid state issues
+    const docInstance = new jsPDF(); 
+    exportToPDF(true, docInstance); // Pass true for blob mode and the instance
+    return docInstance.output('blob');
   };
 
 
@@ -181,7 +185,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
       Time: format(new Date(r.timestamp), 'HH:mm:ss'),
       Systolic: r.systolic,
       Diastolic: r.diastolic,
-      Pulse: r.pulse ?? '', // Added
+      Pulse: r.pulse ?? 'N/A',
       'Body Position': r.bodyPosition,
       'Exercise Context': r.exerciseContext,
       'Symptoms': r.symptoms && r.symptoms.length > 0 && r.symptoms[0] !== "None" ? r.symptoms.join(', ') : '',
@@ -192,7 +196,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
 
     if (analysis) {
         if (analysis.summary) {
-            analysisSummaryText = analysis.summary.replace(disclaimerText, "").trim();
+            analysisSummaryText = analysis.summary.replace(disclaimerText, "").trim(); // Remove disclaimer for data section
             csvContent += `\n\nTrend Analysis Summary:\n"${analysisSummaryText.replace(/"/g, '""')}"`;
         }
         if (analysis.flags && analysis.flags.length > 0) {
@@ -200,7 +204,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
             csvContent += `\n\nFlags:\n${analysisFlagsText}`;
         }
         if (analysis.suggestions && analysis.suggestions.length > 0) {
-            const analysisSuggestionsText = analysis.suggestions.map(s => `"${s.replace(/"/g, '""')}"`).join('\n');
+            const analysisSuggestionsText = analysis.suggestions.map(s => `"${s.replace(/\[.*?\]/g, '').trim().replace(/"/g, '""')}"`).join('\n');
             csvContent += `\n\nSuggestions & Next Steps:\n${analysisSuggestionsText}`;
         }
     }
@@ -216,25 +220,27 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast({ title: 'Export Successful', description: 'Readings and analysis report exported to CSV.' });
   };
 
-  const exportToPDF = (returnInstance = false): jsPDF | Blob | void => {
-    if (readings.length === 0 && !analysis) {
-      if (!returnInstance) toast({ variant: 'destructive', title: 'No Data', description: 'No readings or analysis to export.' });
+  const exportToPDF = (forBlob = false, doc?: jsPDF) => {
+    if (readings.length === 0 && !analysis && !forBlob) {
+      toast({ variant: 'destructive', title: 'No Data', description: 'No readings or analysis to export.' });
       return;
     }
-    const doc = new jsPDF();
+    
+    const pdfDoc = doc || new jsPDF();
     let startY = 20;
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = pdfDoc.internal.pageSize.getHeight();
+    const pageWidth = pdfDoc.internal.pageSize.getWidth();
     const margin = 14;
-    const bottomMarginForDisclaimer = 25; // Ensure enough space
+    const bottomMarginForDisclaimer = 25; 
 
-    const addDisclaimerToCurrentPage = (docInstance: jsPDF, text: string) => {
+    const addDisclaimerToCurrentPage = (docInstance: jsPDF) => {
         const currentFontSize = docInstance.getFontSize();
         docInstance.setFontSize(8);
-        const disclaimerLinesUnsafe = docInstance.splitTextToSize(text, pageWidth - margin * 2);
+        const disclaimerLinesUnsafe = docInstance.splitTextToSize(disclaimerText, pageWidth - margin * 2);
         const disclaimerLines: string[] = Array.isArray(disclaimerLinesUnsafe) ? disclaimerLinesUnsafe : [disclaimerLinesUnsafe];
         let textHeight = disclaimerLines.length * 3.5; 
         
@@ -242,15 +248,14 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
         docInstance.setFontSize(currentFontSize);
     };
 
-
-    doc.setFontSize(16);
-    doc.text('Blood Pressure Report - PressureTrack AI', pageWidth / 2, 15, { align: 'center' });
+    pdfDoc.setFontSize(16);
+    pdfDoc.text('Blood Pressure Report - PressureTrack AI', pageWidth / 2, 15, { align: 'center' });
     startY = 25;
 
 
     if (readings.length > 0) {
-        doc.setFontSize(12);
-        doc.text('Readings History', margin, startY);
+        pdfDoc.setFontSize(12);
+        pdfDoc.text('Readings History', margin, startY);
         startY += 7;
 
         const tableColumn = ["Date", "Time", "SYS", "DIA", "Pulse", "Position", "Exercise", "Symptoms"];
@@ -262,7 +267,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
             format(new Date(reading.timestamp), 'HH:mm'),
             reading.systolic,
             reading.diastolic,
-            reading.pulse ?? 'N/A', // Added
+            reading.pulse ?? 'N/A',
             reading.bodyPosition,
             reading.exerciseContext,
             reading.symptoms && reading.symptoms.length > 0 && reading.symptoms[0] !== "None" ? reading.symptoms.join(', ') : '',
@@ -270,63 +275,65 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
         tableRows.push(readingData);
         });
 
-        (doc as any).autoTable({
+        (pdfDoc as any).autoTable({
             head: [tableColumn],
             body: tableRows,
             startY: startY,
             theme: 'grid',
-            headStyles: { fillColor: [34, 102, 153] },
-            margin: { top: startY, left: margin, right: margin, bottom: bottomMarginForDisclaimer } 
+            headStyles: { fillColor: [34, 102, 153] }, // Example: A shade of blue
+            margin: { top: startY, left: margin, right: margin, bottom: bottomMarginForDisclaimer + 5 }, // Increased bottom margin for table
+            // didDrawPage: (data: any) => { addDisclaimerToCurrentPage(pdfDoc); } // Removed from here
         });
-        startY = (doc as any).lastAutoTable.finalY + 10;
+        startY = (pdfDoc as any).lastAutoTable.finalY + 10;
     }
 
 
     if (analysis) {
         const checkAndAddPage = () => {
-            if (startY > pageHeight - bottomMarginForDisclaimer - 20) { // Check if space for title + one line + margin
-                doc.addPage();
+            if (startY > pageHeight - bottomMarginForDisclaimer - 20) { 
+                pdfDoc.addPage();
                 startY = margin + 5;
             }
         };
 
         checkAndAddPage();
-        doc.setFontSize(14);
-        doc.text('Trend Analysis Report', margin, startY);
+        pdfDoc.setFontSize(14);
+        pdfDoc.text('Trend Analysis Report', margin, startY);
         startY += 10;
-        doc.setFontSize(11);
+        pdfDoc.setFontSize(11);
 
         const addSection = (title: string, content: string | string[]) => {
             checkAndAddPage();
-            doc.setFont(undefined, 'bold');
-            doc.text(title, margin, startY);
+            pdfDoc.setFont(undefined, 'bold');
+            pdfDoc.text(title, margin, startY);
             startY += 6;
-            doc.setFont(undefined, 'normal');
+            pdfDoc.setFont(undefined, 'normal');
             
             const contentToProcess = typeof content === 'string' ? content.replace(disclaimerText, '').trim() : content;
 
             if (typeof contentToProcess === 'string') {
-                const linesUnsafe = doc.splitTextToSize(contentToProcess, pageWidth - margin * 2);
+                const linesUnsafe = pdfDoc.splitTextToSize(contentToProcess, pageWidth - margin * 2);
                 const lines: string[] = Array.isArray(linesUnsafe) ? linesUnsafe : [linesUnsafe];
                 lines.forEach((line: string) => {
                     if (startY + 5 > pageHeight - bottomMarginForDisclaimer) { 
-                        doc.addPage();
+                        pdfDoc.addPage();
                         startY = margin + 5;
                     }
-                    doc.text(line, margin, startY);
+                    pdfDoc.text(line, margin, startY);
                     startY += 5;
                 });
                 startY += 4; 
             } else if (Array.isArray(contentToProcess)) {
                 contentToProcess.forEach(item => {
-                    const itemLinesUnsafe = doc.splitTextToSize(`• ${item}`, pageWidth - (margin * 2) - 4); // -4 for bullet
+                    const itemCleaned = item.replace(/\[.*?\]/g, '').trim();
+                    const itemLinesUnsafe = pdfDoc.splitTextToSize(`• ${itemCleaned}`, pageWidth - (margin * 2) - 4);
                     const itemLines : string[] = Array.isArray(itemLinesUnsafe) ? itemLinesUnsafe : [itemLinesUnsafe];
                     itemLines.forEach((line: string) => {
                          if (startY + 5 > pageHeight - bottomMarginForDisclaimer) {
-                            doc.addPage();
+                            pdfDoc.addPage();
                             startY = margin + 5;
                         }
-                        doc.text(line, margin + 2, startY); // Indent bullet
+                        pdfDoc.text(line, margin + 2, startY); 
                         startY += 5;
                     });
                     startY += 1;
@@ -340,17 +347,16 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
         if (analysis.suggestions && analysis.suggestions.length > 0) addSection('Suggestions & Next Steps:', analysis.suggestions);
     }
     
-    const totalPages = (doc as any).internal.getNumberOfPages();
+    const totalPages = (pdfDoc as any).internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i);
-      addDisclaimerToCurrentPage(doc, disclaimerText);
+      pdfDoc.setPage(i);
+      addDisclaimerToCurrentPage(pdfDoc);
     }
 
-    if (returnInstance) {
-        return doc.output('blob'); // Or just doc if that's what shareViaTextOrApp expects
+    if (!forBlob) {
+        pdfDoc.save('blood_pressure_report.pdf');
+        toast({ title: 'Export Successful', description: 'Readings and analysis report exported to PDF.' });
     }
-    doc.save('blood_pressure_report.pdf');
-    if (!returnInstance) toast({ title: 'Export Successful', description: 'Readings and analysis report exported to PDF.' });
   };
 
   const shareViaEmail = () => {
@@ -366,10 +372,8 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
     if (userProfile?.preferredMailClient === "Gmail") {
         mailtoLink = `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     } else if (userProfile?.preferredMailClient === "Outlook.com") {
-        // Outlook.com deeplink for compose
         mailtoLink = `https://outlook.live.com/mail/0/deeplink/compose?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     }
-    // For "Default (mailto:)", the initial mailtoLink is used.
 
     if (typeof window !== "undefined") {
         window.open(mailtoLink, '_blank');
@@ -379,7 +383,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
 
   if (readings.length === 0) {
     return (
-      <Card className="shadow-lg">
+      <Card className="shadow-lg" id="reading-list-card">
         <CardHeader>
           <CardTitle className="text-2xl flex items-center gap-2">
             <History className="h-7 w-7 text-primary" />
@@ -394,7 +398,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
   }
 
   return (
-    <Card className="shadow-lg">
+    <Card className="shadow-lg" id="reading-list-card">
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div>
           <CardTitle className="text-2xl flex items-center gap-2">
@@ -410,11 +414,19 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
             <TableRow>
               <TableHead className="w-[150px]">Date & Time</TableHead>
               <TableHead>SYS/DIA</TableHead>
-              <TableHead className="hidden sm:table-cell">Pulse</TableHead>
+              <TableHead className="hidden sm:table-cell">
+                <div className="flex items-center gap-1">
+                  <HeartPulseIcon className="h-4 w-4" /> Pulse
+                </div>
+              </TableHead>
               <TableHead>Category</TableHead>
               <TableHead className="hidden sm:table-cell">Position</TableHead>
               <TableHead className="hidden md:table-cell">Exercise</TableHead>
-              <TableHead className="hidden lg:table-cell">Symptoms</TableHead>
+              <TableHead className="hidden lg:table-cell">
+                <div className="flex items-center gap-1">
+                    <Stethoscope className="h-4 w-4" /> Symptoms
+                </div>
+              </TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -431,8 +443,10 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
                   </TableCell>
                   <TableCell className="font-medium">{reading.systolic}/{reading.diastolic}</TableCell>
                   <TableCell className="hidden sm:table-cell">{reading.pulse ? `${reading.pulse} bpm` : 'N/A'}</TableCell>
-                  <TableCell className={`${colorClass} font-medium flex items-center gap-1`}>
-                    <BPCategoryIcon className="h-4 w-4"/> {category}
+                  <TableCell>
+                    <div className={`${colorClass} font-medium flex items-center gap-1`}>
+                        <BPCategoryIcon className="h-4 w-4"/> {category}
+                    </div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
                      <div className="flex items-center gap-1 text-sm" title={reading.bodyPosition}>
@@ -490,7 +504,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
               );
             })}
           </TableBody>
-           {readings.length > 5 && <TableCaption>Scroll for more readings.</TableCaption>}
+           {readings.length > 5 && <TableCaption>Scroll for more readings. Table shows most recent readings first.</TableCaption>}
         </Table>
       </CardContent>
       <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 pt-4 flex-wrap">
@@ -515,3 +529,4 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit, o
     </Card>
   );
 }
+
