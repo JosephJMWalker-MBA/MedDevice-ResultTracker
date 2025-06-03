@@ -48,7 +48,7 @@ const extractBloodPressureDataPrompt = ai.definePrompt({
   output: {schema: ExtractBloodPressureDataOutputSchema},
   prompt: `You are an expert OCR reader for blood pressure monitor displays. The numerical values on the display are shown using a 7-segment digital typeface.
 
-  Carefully examine the image provided. Extract the following values:
+  Carefully examine the image provided. First, automatically find the display region (the rectangle with numbers). Then, from that region, extract the following values:
   - Date: The date the reading was taken.
   - Time: The time the reading was taken.
   - Systolic (SYS): The numerical value associated with the "SYS" or "Systolic" label.
