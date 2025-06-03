@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile, Symptom } from '@/lib/types';
+import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile, Symptom, BodyPosition, ExerciseContext } from '@/lib/types';
 import { BodyPositionOptions, ExerciseContextOptions } from '@/lib/types';
 import { callAnalyzeTrendAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -14,7 +14,8 @@ import DisclaimerAlert from '@/components/blood-pressure/disclaimer-alert';
 import BpChart from '@/components/blood-pressure/bp-chart';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart3, TrendingUp, FileScan, Trash2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { BarChart3, TrendingUp, FileScan, Trash2, FilterIcon } from 'lucide-react';
 import type { AnalyzeBloodPressureTrendInput } from '@/ai/flows/analyze-blood-pressure-trend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,9 @@ export default function HomePage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [currentEditingReading, setCurrentEditingReading] = useState<BloodPressureReading | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const [chartBodyPositionFilter, setChartBodyPositionFilter] = useState<BodyPosition | 'All'>('All');
+  const [chartExerciseContextFilter, setChartExerciseContextFilter] = useState<ExerciseContext | 'All'>('All');
 
 
   const triggerAnalysis = useCallback(async (currentReadings: BloodPressureReading[], profile: UserProfile | null) => {
@@ -271,23 +275,66 @@ export default function HomePage() {
         </DialogContent>
       </Dialog>
 
-
-      {isInitialLoad || (readings.length === 0 && !isLoadingAnalysis) ? (
-        <Card className="shadow-lg" id="bp-chart-card">
-          <CardHeader>
-            <CardTitle className="text-2xl flex items-center gap-2">
-                <TrendingUp className="h-7 w-7 text-primary" />
-                Blood Pressure Chart
-            </CardTitle>
-            <CardDescription>Add some readings to see your trends visualized.</CardDescription>
-          </CardHeader>
-          <CardContent className="h-[300px] flex items-center justify-center">
-            <p className="text-muted-foreground">Waiting for data...</p>
-          </CardContent>
-        </Card>
-      ) : readings.length > 0 ? (
-        <div id="bp-chart-card"><BpChart readings={readings} /></div>
-      ): null}
+      <Card className="shadow-lg" id="bp-chart-card-wrapper">
+         <CardHeader>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                 <div className="flex-grow">
+                    <CardTitle className="text-2xl flex items-center gap-2">
+                        <TrendingUp className="h-7 w-7 text-primary" />
+                        Blood Pressure Chart
+                    </CardTitle>
+                    <CardDescription>Filter readings to see specific trends.</CardDescription>
+                 </div>
+                 <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <FilterIcon className="h-5 w-5 text-muted-foreground sm:hidden" /> {/* Icon for small screens */}
+                    <span className="text-sm font-medium text-muted-foreground hidden sm:inline">Filters:</span>
+                 </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+                <Select value={chartBodyPositionFilter} onValueChange={(value) => setChartBodyPositionFilter(value as BodyPosition | 'All')}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Filter by Body Position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="All">All Positions</SelectItem>
+                        {BodyPositionOptions.map(option => (
+                            <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <Select value={chartExerciseContextFilter} onValueChange={(value) => setChartExerciseContextFilter(value as ExerciseContext | 'All')}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Filter by Exercise Context" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="All">All Contexts</SelectItem>
+                        {ExerciseContextOptions.map(option => (
+                            <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+        </CardHeader>
+        <CardContent>
+            {isInitialLoad || (readings.length === 0 && !isLoadingAnalysis) ? (
+                <div className="h-[350px] flex items-center justify-center">
+                    <p className="text-muted-foreground">Waiting for data...</p>
+                </div>
+            ) : readings.length > 0 ? (
+                <div id="bp-chart-card">
+                    <BpChart 
+                        readings={readings} 
+                        bodyPositionFilter={chartBodyPositionFilter}
+                        exerciseContextFilter={chartExerciseContextFilter}
+                    />
+                </div>
+            ): (
+                 <div className="h-[350px] flex items-center justify-center">
+                    <p className="text-muted-foreground">No readings available. Add some readings to see your chart.</p>
+                </div>
+            )}
+        </CardContent>
+      </Card>
 
 
       {isInitialLoad || isLoadingAnalysis ? (
@@ -335,4 +382,3 @@ export default function HomePage() {
     </div>
   );
 }
-
