@@ -7,16 +7,17 @@ import { Lightbulb, ListChecks, Info, AlertTriangle, AreaChart, ListOrdered } fr
 
 interface TrendAnalysisDisplayProps {
   analysis: TrendAnalysisResult | null;
+  isIndividualAnalysis?: boolean;
 }
 
-export default function TrendAnalysisDisplay({ analysis }: TrendAnalysisDisplayProps) {
+export default function TrendAnalysisDisplay({ analysis, isIndividualAnalysis = false }: TrendAnalysisDisplayProps) {
   if (!analysis) {
     return (
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="text-2xl flex items-center gap-2">
             <Info className="h-7 w-7 text-primary" />
-            Trend Analysis
+            {isIndividualAnalysis ? "Individual Reading Analysis" : "Trend Analysis"}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -31,7 +32,7 @@ export default function TrendAnalysisDisplay({ analysis }: TrendAnalysisDisplayP
   const handleSuggestionClick = (action: 'TREND_CHART' | 'READING_HISTORY') => {
     let elementId = '';
     if (action === 'TREND_CHART') {
-      elementId = 'bp-chart-card';
+      elementId = 'bp-chart-card-wrapper'; // Corrected ID to target the wrapper for better scrolling
     } else if (action === 'READING_HISTORY') {
       elementId = 'reading-list-card';
     }
@@ -76,13 +77,19 @@ export default function TrendAnalysisDisplay({ analysis }: TrendAnalysisDisplayP
 
 
   return (
-    <Card className="shadow-lg border-primary/50">
+    <Card className={`shadow-lg ${isIndividualAnalysis ? 'border-accent/50' : 'border-primary/50'}`}>
       <CardHeader>
         <CardTitle className="text-2xl flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-          Blood Pressure Trend Analysis
+            {isIndividualAnalysis ? (
+                 <Info className="h-7 w-7 text-accent" />
+            ) : (
+                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            )}
+          {isIndividualAnalysis ? "Individual Reading Analysis" : "Blood Pressure Trend Analysis"}
         </CardTitle>
-        <CardDescription>Insights based on your readings from the last 30 days.</CardDescription>
+        <CardDescription>
+            {isIndividualAnalysis ? "Analysis for the selected reading." : "Insights based on your readings from the last 30 days."}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div>
@@ -122,3 +129,4 @@ export default function TrendAnalysisDisplay({ analysis }: TrendAnalysisDisplayP
     </Card>
   );
 }
+

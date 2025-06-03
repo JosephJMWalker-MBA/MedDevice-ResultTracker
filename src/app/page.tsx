@@ -15,7 +15,7 @@ import BpChart from '@/components/blood-pressure/bp-chart';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BarChart3, TrendingUp, FileScan, Trash2, FilterIcon } from 'lucide-react';
+import { BarChart3, TrendingUp, FileScan, Trash2, FilterIcon, Info } from 'lucide-react';
 import type { AnalyzeBloodPressureTrendInput } from '@/ai/flows/analyze-blood-pressure-trend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,11 @@ export default function HomePage() {
 
   const [chartBodyPositionFilter, setChartBodyPositionFilter] = useState<BodyPosition | 'All'>('All');
   const [chartExerciseContextFilter, setChartExerciseContextFilter] = useState<ExerciseContext | 'All'>('All');
+
+  const [selectedReadingForAnalysis, setSelectedReadingForAnalysis] = useState<BloodPressureReading | null>(null);
+  const [selectedReadingAnalysisResult, setSelectedReadingAnalysisResult] = useState<TrendAnalysisResult | null>(null);
+  const [isLoadingSelectedAnalysis, setIsLoadingSelectedAnalysis] = useState(false);
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
 
 
   const triggerAnalysis = useCallback(async (currentReadings: BloodPressureReading[], profile: UserProfile | null) => {
@@ -96,7 +101,6 @@ export default function HomePage() {
       const storedReadingsRaw = localStorage.getItem('bpReadings');
       if (storedReadingsRaw) {
         const parsedReadings: any[] = JSON.parse(storedReadingsRaw);
-        // Ensure all fields, including new ones, are gracefully handled
         loadedReadings = parsedReadings.map((reading: any, index: number) => ({
           id: reading.id || `${new Date(reading.timestamp || Date.now()).getTime()}-${index}`,
           timestamp: reading.timestamp || new Date().toISOString(),
@@ -247,6 +251,41 @@ export default function HomePage() {
     symptoms: currentEditingReading.symptoms || [],
   } : undefined;
 
+  const handleViewIndividualAnalysis = async (reading: BloodPressureReading) => {
+    setSelectedReadingForAnalysis(reading);
+    setShowAnalysisModal(true);
+    setIsLoadingSelectedAnalysis(true);
+    setSelectedReadingAnalysisResult(null);
+
+    try {
+      const analysisPayload: AnalyzeBloodPressureTrendInput = {
+        readings: [{
+          timestamp: reading.timestamp,
+          systolic: reading.systolic,
+          diastolic: reading.diastolic,
+          pulse: reading.pulse,
+          bodyPosition: reading.bodyPosition || BodyPositionOptions[0],
+          exerciseContext: reading.exerciseContext || ExerciseContextOptions[0],
+          symptoms: reading.symptoms || [],
+        }],
+        ...(userProfile?.age && { age: userProfile.age }),
+        ...(userProfile?.weightLbs && { weightLbs: userProfile.weightLbs }),
+        ...(userProfile?.gender && { gender: userProfile.gender }),
+        ...(userProfile?.raceEthnicity && { raceEthnicity: userProfile.raceEthnicity }),
+        ...(userProfile?.medicalConditions && userProfile.medicalConditions.length > 0 && { medicalConditions: userProfile.medicalConditions }),
+        ...(userProfile?.medications && { medications: userProfile.medications }),
+      };
+      const result = await callAnalyzeTrendAction(analysisPayload);
+      setSelectedReadingAnalysisResult(result);
+    } catch (error: any) {
+      console.error("Error analyzing selected reading:", error);
+      toast({ variant: 'destructive', title: 'Analysis Error', description: error.message || 'Could not analyze selected reading.' });
+      setSelectedReadingAnalysisResult(null);
+    } finally {
+      setIsLoadingSelectedAnalysis(false);
+    }
+  };
+
 
   return (
     <div className="container mx-auto max-w-4xl p-4 md:p-8 space-y-8">
@@ -307,6 +346,39 @@ export default function HomePage() {
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => { setShowEditModal(false); setCurrentEditingReading(null); setShowDeleteConfirm(false); }}>Cancel</Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAnalysisModal} onOpenChange={setShowAnalysisModal}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+                <Info className="h-6 w-6 text-primary" />
+                Individual Reading Analysis
+            </DialogTitle>
+            <DialogDescription>
+                {selectedReadingForAnalysis ? 
+                    `Analysis for reading taken on ${new Date(selectedReadingForAnalysis.timestamp).toLocaleString()}.`
+                    : "Loading analysis..."}
+            </DialogDescription>
+          </DialogHeader>
+          {isLoadingSelectedAnalysis ? (
+            <div className="space-y-4 py-4">
+              <Skeleton className="h-8 w-3/4" />
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-8 w-1/2" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : selectedReadingAnalysisResult ? (
+            <div className="py-4 max-h-[70vh] overflow-y-auto">
+                 <TrendAnalysisDisplay analysis={selectedReadingAnalysisResult} isIndividualAnalysis={true}/>
+            </div>
+          ) : (
+            <p className="py-4 text-muted-foreground">Could not load analysis for this reading.</p>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setShowAnalysisModal(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -410,6 +482,7 @@ export default function HomePage() {
                 analysis={analysis}
                 userProfile={userProfile}
                 onEdit={handleOpenEditModal}
+                onViewIndividualAnalysis={handleViewIndividualAnalysis}
             />
         </div>
       )}
@@ -418,3 +491,4 @@ export default function HomePage() {
     </div>
   );
 }
+

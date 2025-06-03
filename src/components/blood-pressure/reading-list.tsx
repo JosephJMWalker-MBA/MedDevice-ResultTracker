@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell, Stethoscope, HeartPulseIcon, Pencil, MessageSquareText, Edit3Icon } from 'lucide-react';
+import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell, Stethoscope, HeartPulseIcon, Pencil, MessageSquareText, Edit3Icon, EyeOff } from 'lucide-react';
 
 
 interface ReadingListProps {
@@ -20,6 +20,7 @@ interface ReadingListProps {
   analysis: TrendAnalysisResult | null;
   userProfile: UserProfile | null;
   onEdit: (id: string) => void;
+  onViewIndividualAnalysis: (reading: BloodPressureReading) => void;
 }
 
 const getBpCategory = (systolic: number, diastolic: number): { category: string; colorClass: string; Icon: React.ElementType } => {
@@ -53,7 +54,7 @@ const getExerciseContextIcon = (context?: BloodPressureReading['exerciseContext'
 };
 
 
-export default function ReadingList({ readings, analysis, userProfile, onEdit }: ReadingListProps) {
+export default function ReadingList({ readings, analysis, userProfile, onEdit, onViewIndividualAnalysis }: ReadingListProps) {
   const { toast } = useToast();
   const disclaimerText = "⚠️ This is not medical advice. Consult a healthcare professional for any concerns.";
 
@@ -416,7 +417,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit }:
             <History className="h-7 w-7 text-primary" />
             Readings History
           </CardTitle>
-          <CardDescription>A log of your past blood pressure measurements.</CardDescription>
+          <CardDescription>A log of your past blood pressure measurements. Click <MessageSquareText className="inline h-4 w-4 text-primary" /> to see individual analysis.</CardDescription>
         </div>
       </CardHeader>
       <CardContent>
@@ -490,7 +491,10 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit }:
                             {(!reading.user_correction && !reading.glare_detected) && <span className="text-xs text-muted-foreground">-</span>}
                         </div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right space-x-1">
+                        <Button variant="ghost" size="icon" onClick={() => onViewIndividualAnalysis(reading)} title="View Analysis">
+                            <MessageSquareText className="h-4 w-4 text-primary" />
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => onEdit(reading.id)} title="Edit Reading">
                             <Pencil className="h-4 w-4" />
                         </Button>
@@ -524,3 +528,4 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit }:
     </Card>
   );
 }
+
