@@ -1,73 +1,77 @@
 
 'use server';
 
-import { extractBloodPressureData, type ExtractBloodPressureDataInput } from '@/ai/flows/extract-blood-pressure-data';
+import { extractBloodPressureData, type ExtractBloodPressureDataInput } from '@/ai/flows/extract-blood-pressure-data'; // Still used for OCR part of the mock
 import { analyzeBloodPressureTrend, type AnalyzeBloodPressureTrendInput, type AnalyzeBloodPressureTrendOutput } from '@/ai/flows/analyze-blood-pressure-trend';
 import type { ImageProcessingResult, OcrRawData } from '@/lib/types';
 
+// Simulate all possible backend responses for testing UI flows
 export async function callExtractDataAction(photoDataUri: string): Promise<ImageProcessingResult> {
-  if (!photoDataUri || !photoDataUri.startsWith('data:image')) {
-    throw new Error("Invalid image data URI provided.");
-  }
-  const input: ExtractBloodPressureDataInput = { photoDataUri };
-  
-  // Simulate richer backend processing for now.
-  // In a real scenario, this action would call your Firebase Cloud Function.
-  let glareDetectedMock = false; // Math.random() > 0.8; // Simulate glare 20% of the time
-  let varianceMock: number | undefined = undefined;
-  
-  // For demonstration, let's assume the real backend would handle glare detection *before* OCR.
-  // If glare was detected, OCR might not even run, or results would be flagged.
-  // Here, we'll run OCR regardless for the prototype but include the glare flag.
-  if (glareDetectedMock) {
-    varianceMock = Math.random() * 20; // Simulate some variance value
-  }
+  // Mock glare logic: randomly assign glare for demo purposes
+  const glareDetected = Math.random() < 0.3; // 30% chance of glare
 
-  try {
-    const ocrResult = await extractBloodPressureData(input);
-    
-    // Construct the ocr_raw structure
-    // The Genkit flow returns numbers, so we convert them back to strings for ocr_raw
-    // and handle potential undefined/null for pulse.
-    const ocr_raw: OcrRawData = {
-      sys: ocrResult.systolic?.toString() || null,
-      dia: ocrResult.diastolic?.toString() || null,
-      pul: ocrResult.pulse?.toString() || null,
-    };
+  let ocrDataFromFlow: {
+    date: string;
+    time: string;
+    systolic?: number;
+    diastolic?: number;
+    pulse?: number;
+    ocr_raw: OcrRawData;
+  } = {
+    date: new Date().toISOString().split('T')[0], // Mock date
+    time: new Date().toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }), // Mock time
+    ocr_raw: { sys: null, dia: null, pul: null }
+  };
 
-    return {
-      date: ocrResult.date || "",
-      time: ocrResult.time || "",
-      systolic: ocrResult.systolic || 0, // Fallback to 0 if OCR fails for numbers
-      diastolic: ocrResult.diastolic || 0,
-      pulse: ocrResult.pulse ?? undefined,
-      // Mocked/simulated values based on your new pipeline
-      glare_detected: glareDetectedMock,
-      variance: varianceMock,
-      image_url: photoDataUri.substring(0, 50) + "...", // Mock URL
-      heatmap_url: "https://placehold.co/300x150.png?text=MockHeatmap", // Mock URL
-      ocr_raw: ocr_raw,
-    };
-  } catch (error) {
-    console.error("Error in callExtractDataAction:", error);
-    // Return a structure indicating failure but still fitting ImageProcessingResult
-    return {
-        date: "",
-        time: "",
-        systolic: 0,
-        diastolic: 0,
-        pulse: undefined,
-        glare_detected: glareDetectedMock, // Could be true if glare was detected before OCR failed
-        variance: varianceMock,
-        image_url: photoDataUri.substring(0, 50) + "...",
-        heatmap_url: "https://placehold.co/300x150.png?text=MockHeatmapError",
-        ocr_raw: { sys: null, dia: null, pul: null },
-        // Include an error message perhaps, or handle differently
-        // For now, rely on toast in frontend for error display
-        // errorMessage: "Failed to extract data from image. The AI model might be unable to read this image clearly."
-    };
-    // throw new Error("Failed to extract data from image. The AI model might be unable to read this image clearly.");
+  if (!glareDetected) {
+    // If no glare, attempt "OCR" (using the Genkit flow for this mock)
+    try {
+      const input: ExtractBloodPressureDataInput = { photoDataUri };
+      const extracted = await extractBloodPressureData(input);
+      ocrDataFromFlow = {
+        date: extracted.date || ocrDataFromFlow.date,
+        time: extracted.time || ocrDataFromFlow.time,
+        systolic: extracted.systolic,
+        diastolic: extracted.diastolic,
+        pulse: extracted.pulse,
+        ocr_raw: {
+          sys: extracted.systolic?.toString() || null,
+          dia: extracted.diastolic?.toString() || null,
+          pul: extracted.pulse?.toString() || null,
+        }
+      };
+    } catch (e) {
+      console.warn("Mock OCR (Genkit flow) failed, returning empty OCR data.", e);
+      // ocrDataFromFlow remains with null/empty raw values
+       ocrDataFromFlow.ocr_raw = { sys: null, dia: null, pul: null };
+       ocrDataFromFlow.systolic = undefined;
+       ocrDataFromFlow.diastolic = undefined;
+       ocrDataFromFlow.pulse = undefined;
+    }
+  } else {
+     // If glare detected, OCR raw values are typically empty or not reliable
+     ocrDataFromFlow.ocr_raw = { sys: null, dia: null, pul: null };
+     ocrDataFromFlow.systolic = undefined;
+     ocrDataFromFlow.diastolic = undefined;
+     ocrDataFromFlow.pulse = undefined;
   }
+  
+  console.log("UserAction: Image processing attempted", { photoDataUriLength: photoDataUri.length, glareDetectedMock: glareDetected });
+
+  return {
+    // Fields from ExtractBloodPressureDataOutput
+    date: ocrDataFromFlow.date,
+    time: ocrDataFromFlow.time,
+    systolic: ocrDataFromFlow.systolic,
+    diastolic: ocrDataFromFlow.diastolic,
+    pulse: ocrDataFromFlow.pulse,
+    // New fields for ImageProcessingResult
+    glare_detected: glareDetected,
+    variance: glareDetected ? Math.random() * 10 + 1 : Math.random() * 10 + 15, // Lower for glare, higher otherwise
+    image_url: "https://placehold.co/600x400.png?text=Original+Image", // Mock URL
+    heatmap_url: glareDetected ? "https://placehold.co/600x400.png?text=Heatmap+(Glare)" : "https://placehold.co/600x400.png?text=Heatmap+(Normal)", // Mock URL
+    ocr_raw: ocrDataFromFlow.ocr_raw,
+  };
 }
 
 export async function callAnalyzeTrendAction(input: AnalyzeBloodPressureTrendInput): Promise<AnalyzeBloodPressureTrendOutput> {

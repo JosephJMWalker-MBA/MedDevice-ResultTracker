@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell, Stethoscope, HeartPulseIcon, Pencil, MessageSquareText } from 'lucide-react';
+import { History, TrendingUp, Activity, ThermometerSnowflake, ThermometerSun, PersonStanding, BedDouble, Sofa, HelpCircleIcon, FileText, FileArchive, Mail, Link2, Bike, Zap, Dumbbell, Stethoscope, HeartPulseIcon, Pencil, MessageSquareText, Edit3Icon } from 'lucide-react';
 
 
 interface ReadingListProps {
@@ -20,7 +20,6 @@ interface ReadingListProps {
   analysis: TrendAnalysisResult | null;
   userProfile: UserProfile | null;
   onEdit: (id: string) => void;
-  // onDelete is removed, will be handled in edit modal
 }
 
 const getBpCategory = (systolic: number, diastolic: number): { category: string; colorClass: string; Icon: React.ElementType } => {
@@ -66,6 +65,9 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit }:
             text += `${format(new Date(r.timestamp), 'yyyy-MM-dd HH:mm')} - SYS: ${r.systolic}, DIA: ${r.diastolic}${r.pulse ? `, Pulse: ${r.pulse} bpm` : ''}, Pos: ${r.bodyPosition}, Ex: ${r.exerciseContext}`;
             if (r.symptoms && r.symptoms.length > 0 && r.symptoms[0] !== "None") {
                 text += `, Symptoms: ${r.symptoms.join(', ')}`;
+            }
+            if (r.user_correction) {
+                text += ` (Corrected)`;
             }
             text += '\n';
         });
@@ -185,6 +187,9 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit }:
       'Body Position': r.bodyPosition,
       'Exercise Context': r.exerciseContext,
       'Symptoms': r.symptoms && r.symptoms.length > 0 && r.symptoms[0] !== "None" ? r.symptoms.join(', ') : '',
+      'User Corrected OCR': r.user_correction ? 'Yes' : 'No',
+      'Glare Detected': r.glare_detected ? 'Yes' : 'No',
+      'Laplacian Variance': r.variance ?? 'N/A',
     }));
 
     let csvContent = Papa.unparse(dataToExport);
@@ -257,19 +262,23 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit }:
         pdfDoc.text('Readings History', margin, startY);
         startY += 7;
 
-        const tableColumn = ["Date", "Time", "SYS", "DIA", "Pulse", "Position", "Exercise", "Symptoms"];
+        const tableColumn = ["Date", "Time", "SYS/DIA", "Pulse", "Position", "Exercise", "Symptoms", "Flags"];
         const tableRows: any[][] = [];
 
         readings.forEach(reading => {
+        const flags = [];
+        if (reading.user_correction) flags.push("Corrected");
+        if (reading.glare_detected) flags.push("Glare");
+
         const readingData = [
             format(new Date(reading.timestamp), 'yyyy-MM-dd'),
             format(new Date(reading.timestamp), 'HH:mm'),
-            reading.systolic,
-            reading.diastolic,
+            `${reading.systolic}/${reading.diastolic}`,
             reading.pulse ?? 'N/A',
             reading.bodyPosition,
             reading.exerciseContext,
             reading.symptoms && reading.symptoms.length > 0 && reading.symptoms[0] !== "None" ? reading.symptoms.join(', ') : '',
+            flags.join(', ')
         ];
         tableRows.push(readingData);
         });
@@ -279,8 +288,12 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit }:
             body: tableRows,
             startY: startY,
             theme: 'grid',
-            headStyles: { fillColor: [34, 102, 153] },
-            margin: { top: startY, left: margin, right: margin, bottom: bottomMarginForDisclaimer + 10 }, // Increased bottom margin
+            headStyles: { fillColor: [34, 102, 153] }, // Primary blue-ish
+            columnStyles: {
+                2: { cellWidth: 25 }, // SYS/DIA
+                7: { cellWidth: 25 }  // Flags
+            },
+            margin: { top: startY, left: margin, right: margin, bottom: bottomMarginForDisclaimer + 10 },
         });
         startY = (pdfDoc as any).lastAutoTable.finalY + 10;
     }
@@ -425,6 +438,7 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit }:
                     <Stethoscope className="h-4 w-4" /> Symptoms
                 </div>
               </TableHead>
+              <TableHead>Flags</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -469,6 +483,13 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit }:
                         <span className="text-muted-foreground">N/A</span>
                     )}
                     </TableCell>
+                    <TableCell>
+                        <div className="flex flex-col items-start gap-0.5">
+                            {reading.user_correction && <Badge variant="outline" className="px-1.5 py-0.5 text-xs border-amber-500 text-amber-700"><Edit3Icon className="h-3 w-3 mr-1"/>Corrected</Badge>}
+                            {reading.glare_detected && <Badge variant="destructive" className="px-1.5 py-0.5 text-xs"><EyeOff className="h-3 w-3 mr-1"/>Glare</Badge>}
+                            {(!reading.user_correction && !reading.glare_detected) && <span className="text-xs text-muted-foreground">-</span>}
+                        </div>
+                    </TableCell>
                     <TableCell className="text-right">
                         <Button variant="ghost" size="icon" onClick={() => onEdit(reading.id)} title="Edit Reading">
                             <Pencil className="h-4 w-4" />
@@ -503,4 +524,3 @@ export default function ReadingList({ readings, analysis, userProfile, onEdit }:
     </Card>
   );
 }
-
