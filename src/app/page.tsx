@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile, Symptom, BodyPosition, ExerciseContext } from '@/lib/types';
+import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile, Symptom, BodyPosition, ExerciseContext, OcrRawData } from '@/lib/types';
 import { BodyPositionOptions, ExerciseContextOptions } from '@/lib/types';
 import { callAnalyzeTrendAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -96,6 +96,7 @@ export default function HomePage() {
       const storedReadingsRaw = localStorage.getItem('bpReadings');
       if (storedReadingsRaw) {
         const parsedReadings: any[] = JSON.parse(storedReadingsRaw);
+        // Ensure all fields, including new ones, are gracefully handled
         loadedReadings = parsedReadings.map((reading: any, index: number) => ({
           id: reading.id || `${new Date(reading.timestamp || Date.now()).getTime()}-${index}`,
           timestamp: reading.timestamp || new Date().toISOString(),
@@ -105,6 +106,12 @@ export default function HomePage() {
           bodyPosition: BodyPositionOptions.includes(reading.bodyPosition) ? reading.bodyPosition : BodyPositionOptions[0],
           exerciseContext: ExerciseContextOptions.includes(reading.exerciseContext) ? reading.exerciseContext : ExerciseContextOptions[0],
           symptoms: Array.isArray(reading.symptoms) ? reading.symptoms : [],
+          glare_detected: typeof reading.glare_detected === 'boolean' ? reading.glare_detected : undefined,
+          variance: typeof reading.variance === 'number' ? reading.variance : undefined,
+          user_correction: typeof reading.user_correction === 'boolean' ? reading.user_correction : undefined,
+          image_url: typeof reading.image_url === 'string' ? reading.image_url : undefined,
+          heatmap_url: typeof reading.heatmap_url === 'string' ? reading.heatmap_url : undefined,
+          ocr_raw: typeof reading.ocr_raw === 'object' ? reading.ocr_raw : undefined,
         })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       }
       setReadings(loadedReadings);
@@ -143,7 +150,17 @@ export default function HomePage() {
     }
   }, [readings, isInitialLoad, toast]);
 
-  const handleFormSubmit = (data: ReadingFormData) => {
+  const handleFormSubmit = (
+    data: ReadingFormData,
+    additionalData: {
+      glare_detected?: boolean;
+      variance?: number;
+      user_correction?: boolean;
+      image_url?: string;
+      heatmap_url?: string;
+      ocr_raw?: OcrRawData | null;
+    }
+  ) => {
     if (currentEditingReading) { 
       const updatedReadings = readings.map(r =>
         r.id === currentEditingReading.id
@@ -156,6 +173,14 @@ export default function HomePage() {
               bodyPosition: data.bodyPosition,
               exerciseContext: data.exerciseContext,
               symptoms: data.symptoms || [],
+              // Assume additionalData is not relevant for edits, or handle if needed
+              // For simplicity, edit keeps existing additional data unless explicitly changed by form
+              glare_detected: r.glare_detected, 
+              variance: r.variance,
+              user_correction: additionalData.user_correction !== undefined ? additionalData.user_correction : r.user_correction,
+              image_url: r.image_url,
+              heatmap_url: r.heatmap_url,
+              ocr_raw: r.ocr_raw,
             }
           : r
       ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -173,6 +198,12 @@ export default function HomePage() {
         bodyPosition: data.bodyPosition,
         exerciseContext: data.exerciseContext,
         symptoms: data.symptoms || [],
+        glare_detected: additionalData.glare_detected,
+        variance: additionalData.variance,
+        user_correction: additionalData.user_correction,
+        image_url: additionalData.image_url,
+        heatmap_url: additionalData.heatmap_url,
+        ocr_raw: additionalData.ocr_raw,
       };
       const updatedReadings = [...readings, newReading].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setReadings(updatedReadings);
@@ -199,6 +230,7 @@ export default function HomePage() {
     }
   };
   
+  // For editing, we pass the core form data. The `additionalData` for new readings is handled separately in handleFormSubmit.
   const editingReadingFormData: ReadingFormData | undefined = currentEditingReading ? {
     date: currentEditingReading.timestamp.split('T')[0],
     time: new Date(currentEditingReading.timestamp).toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
@@ -208,6 +240,7 @@ export default function HomePage() {
     bodyPosition: currentEditingReading.bodyPosition,
     exerciseContext: currentEditingReading.exerciseContext,
     symptoms: currentEditingReading.symptoms || [],
+    // imageFile is not persisted, so it won't be part of initialData for editing
   } : undefined;
 
 
@@ -224,7 +257,7 @@ export default function HomePage() {
           if (!isOpen) {
             setShowEditModal(false);
             setCurrentEditingReading(null);
-            setShowDeleteConfirm(false); // Ensure delete confirm is also closed
+            setShowDeleteConfirm(false); 
           } else {
             setShowEditModal(true);
           }
@@ -244,7 +277,7 @@ export default function HomePage() {
               isLoadingExternally={isLoadingAnalysis}
             />
           )}
-          <DialogFooter className="flex justify-between sm:justify-between w-full">
+          <DialogFooter className="flex justify-between sm:justify-between w-full pt-4">
             <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" className="mr-auto"> 
@@ -286,7 +319,7 @@ export default function HomePage() {
                     <CardDescription>Filter readings to see specific trends.</CardDescription>
                  </div>
                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <FilterIcon className="h-5 w-5 text-muted-foreground sm:hidden" /> {/* Icon for small screens */}
+                    <FilterIcon className="h-5 w-5 text-muted-foreground sm:hidden" /> 
                     <span className="text-sm font-medium text-muted-foreground hidden sm:inline">Filters:</span>
                  </div>
             </div>

@@ -12,18 +12,39 @@ export type ExerciseContext = typeof ExerciseContextOptions[number];
 export const StaticSymptomsList = ["Dizzy", "Headache", "Lightheaded", "Fatigue", "Shortness of Breath", "Chest Pain", "Swelling", "Blurred Vision", "None"] as const;
 export type Symptom = typeof StaticSymptomsList[number];
 
+export interface OcrRawData {
+  sys: string | null;
+  dia: string | null;
+  pul: string | null;
+}
+
 export interface BloodPressureReading {
   id: string;
   timestamp: string;
   systolic: number;
   diastolic: number;
-  pulse?: number; // Added
+  pulse?: number;
   bodyPosition: BodyPosition;
   exerciseContext: ExerciseContext;
   symptoms?: Symptom[];
+  // New fields for glare detection and enhanced OCR pipeline
+  glare_detected?: boolean;
+  variance?: number; // Laplacian variance for glare detection
+  user_correction?: boolean; // True if user manually changed OCR'd values
+  image_url?: string; // URL to original image in Firebase Storage
+  heatmap_url?: string; // URL to glare heatmap overlay in Firebase Storage
+  ocr_raw?: OcrRawData | null; // Raw text from OCR for each field
 }
 
-export type OcrData = ExtractBloodPressureDataOutput; // Assumes OCR output might not have pulse yet
+// This type represents the output from the (new hypothetical) backend image processing function
+export interface ImageProcessingResult extends ExtractBloodPressureDataOutput {
+  glare_detected: boolean;
+  variance?: number;
+  image_url?: string; // URL to original image in Firebase Storage
+  heatmap_url?: string; // URL to glare heatmap overlay in Firebase Storage
+  ocr_raw?: OcrRawData | null;
+}
+
 
 export type TrendAnalysisResult = AnalyzeBloodPressureTrendOutput;
 
@@ -43,7 +64,7 @@ export const ReadingFormSchema = z.object({
   time: z.string().min(1, "Time is required"),
   systolic: z.coerce.number({invalid_type_error: "Systolic must be a number"}).positive("Systolic pressure must be positive"),
   diastolic: z.coerce.number({invalid_type_error: "Diastolic must be a number"}).positive("Diastolic pressure must be positive"),
-  pulse: z.coerce.number({invalid_type_error: "Pulse must be a number"}).positive("Pulse must be positive").optional().nullable(), // Added
+  pulse: z.coerce.number({invalid_type_error: "Pulse must be a number"}).positive("Pulse must be positive").optional().nullable(),
   bodyPosition: z.enum(BodyPositionOptions, { required_error: "Body position is required." }),
   exerciseContext: z.enum(ExerciseContextOptions, { required_error: "Exercise context is required." }),
   symptoms: z.array(z.enum(StaticSymptomsList)).optional(),
@@ -86,7 +107,7 @@ export interface UserProfile {
   medicalConditions?: string[];
   medications?: string | null;
   preferredReminderTime?: string | null;
-  preferredMailClient?: PreferredMailClient; // Added
+  preferredMailClient?: PreferredMailClient;
 }
 
 export const UserProfileSchema = z.object({
@@ -99,7 +120,7 @@ export const UserProfileSchema = z.object({
   preferredReminderTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format. Use HH:MM.")
     .optional()
     .nullable(),
-  preferredMailClient: z.enum(PreferredMailClientOptions).optional().nullable(), // Added
+  preferredMailClient: z.enum(PreferredMailClientOptions).optional().nullable(),
 });
 
 export type UserProfileFormData = z.infer<typeof UserProfileSchema>;
@@ -107,3 +128,6 @@ export type UserProfileFormData = z.infer<typeof UserProfileSchema>;
 export type UserProfileFormDataInternal = UserProfileFormData & {
   medicalConditions?: string | null;
 };
+
+// OcrData is now effectively ImageProcessingResult for the form's perspective
+export type OcrData = ImageProcessingResult;
