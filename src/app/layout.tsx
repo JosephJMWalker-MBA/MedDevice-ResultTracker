@@ -28,9 +28,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <meta property="og:image" content="https://placehold.co/1200x630.png?text=PressureTrackOG" data-ai-hint="app logo banner health" />
-        <link rel="icon" href="https://placehold.co/48x48.png?text=Favicon" data-ai-hint="app icon health" type="image/png" />
-        <link rel="apple-touch-icon" href="https://placehold.co/180x180.png?text=AppleIcon" data-ai-hint="app icon health" />
+        <meta property="og:image" content="https://placehold.co/1200x630.png" data-ai-hint="app banner" />
+        <link rel="icon" href="https://placehold.co/48x48.png" data-ai-hint="heart ekg" type="image/png" />
+        <link rel="apple-touch-icon" href="https://placehold.co/180x180.png" data-ai-hint="heart ekg" />
       </head>
       <body
         className={cn(
