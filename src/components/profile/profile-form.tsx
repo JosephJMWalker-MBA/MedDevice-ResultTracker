@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UserProfileFormData, UserProfileSchema, RaceEthnicityOptions, GenderOptions, UserProfile, PreferredMailClientOptions } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { Save, UserCog, CalendarPlus, Mail } from 'lucide-react'; // Removed BellRing, BellOff
+import { Save, UserCog, CalendarPlus, Mail } from 'lucide-react';
 
 // Helper function to format date for ICS (UTC based for DTSTAMP, local for event time)
 function formatDateForICS(date: Date, isUtc: boolean = true): string {
@@ -137,7 +137,7 @@ export default function ProfileForm() {
     try {
       const medicalConditionsArray = typeof data.medicalConditions === 'string' 
         ? data.medicalConditions.split(',').map(s => s.trim()).filter(Boolean) 
-        : (Array.isArray(data.medicalConditions) ? data.medicalConditions : []);
+        : []; // Ensure it's an array even if input is null/undefined
 
       const profileToSave: UserProfile = {
         age: data.age,
@@ -170,11 +170,6 @@ export default function ProfileForm() {
     }
   };
   
-  const medicalConditionsValue = form.watch('medicalConditions');
-  const medicalConditionsForTextarea = Array.isArray(medicalConditionsValue) 
-    ? medicalConditionsValue.join(', ') 
-    : (typeof medicalConditionsValue === 'string' ? medicalConditionsValue : '');
-
   const preferredReminderTimeValue = form.watch('preferredReminderTime');
 
   return (
@@ -227,7 +222,7 @@ export default function ProfileForm() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Gender</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value ?? undefined} defaultValue={field.value ?? undefined}>
+                    <Select onValueChange={field.onChange} value={field.value ?? undefined} >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select gender" />
@@ -249,7 +244,7 @@ export default function ProfileForm() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Race/Ethnicity</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value ?? undefined} defaultValue={field.value ?? undefined}>
+                    <Select onValueChange={field.onChange} value={field.value ?? undefined} >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select race/ethnicity" />
@@ -277,8 +272,7 @@ export default function ProfileForm() {
                     <Textarea
                       placeholder="List any existing medical conditions, separated by commas (e.g., Diabetes, Asthma)"
                       {...field}
-                      value={medicalConditionsForTextarea}
-                      onChange={e => field.onChange(e.target.value)} 
+                      value={field.value ?? ''}
                     />
                   </FormControl>
                   <FormDescription>Separate multiple conditions with a comma.</FormDescription>
@@ -315,7 +309,7 @@ export default function ProfileForm() {
                         <Mail className="h-4 w-4 text-muted-foreground" />
                         Preferred Email Sharing Method
                     </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value ?? undefined} defaultValue={field.value ?? undefined}>
+                    <Select onValueChange={field.onChange} value={field.value ?? undefined} >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select email client" />
@@ -369,4 +363,3 @@ export default function ProfileForm() {
     </Card>
   );
 }
-
