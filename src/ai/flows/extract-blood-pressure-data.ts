@@ -27,9 +27,9 @@ export type ExtractBloodPressureDataInput = z.infer<
 const ExtractBloodPressureDataOutputSchema = z.object({
   date: z.string().describe('The date of the blood pressure reading.'),
   time: z.string().describe('The time of the blood pressure reading.'),
-  systolic: z.number().describe('The systolic blood pressure value.'),
-  diastolic: z.number().describe('The diastolic blood pressure value.'),
-  pulse: z.number().optional().describe('The pulse or heart rate value in beats per minute (bpm).'),
+  systolic: z.number().describe('The systolic blood pressure value (often labeled SYS).'),
+  diastolic: z.number().describe('The diastolic blood pressure value (often labeled DIA).'),
+  pulse: z.number().optional().describe('The pulse or heart rate value in beats per minute (bpm) (often labeled PUL or similar).'),
 });
 
 export type ExtractBloodPressureDataOutput = z.infer<
@@ -46,10 +46,17 @@ const extractBloodPressureDataPrompt = ai.definePrompt({
   name: 'extractBloodPressureDataPrompt',
   input: {schema: ExtractBloodPressureDataInputSchema},
   output: {schema: ExtractBloodPressureDataOutputSchema},
-  prompt: `You are an expert OCR reader for blood pressure readings.
+  prompt: `You are an expert OCR reader for blood pressure monitor displays.
 
-  Extract the date, time, systolic, diastolic, and pulse (heart rate) values from the image.
+  Carefully examine the image provided. Extract the following values:
+  - Date: The date the reading was taken.
+  - Time: The time the reading was taken.
+  - Systolic (SYS): The numerical value associated with the "SYS" or "Systolic" label.
+  - Diastolic (DIA): The numerical value associated with the "DIA" or "Diastolic" label.
+  - Pulse (PUL): The numerical value associated with the "PUL", "Pulse", or heart rate label, in beats per minute (bpm).
+
   If a pulse value is not clearly visible or present, do not include the pulse field in the output.
+  Ensure the date and time are correctly interpreted.
 
   Photo: {{media url=photoDataUri}}`,
 });
