@@ -46,7 +46,7 @@ const extractBloodPressureDataPrompt = ai.definePrompt({
   name: 'extractBloodPressureDataPrompt',
   input: {schema: ExtractBloodPressureDataInputSchema},
   output: {schema: ExtractBloodPressureDataOutputSchema},
-  prompt: `You are an expert OCR reader for blood pressure monitor displays.
+  prompt: `You are an expert OCR reader for blood pressure monitor displays. The numerical values on the display are shown using a 7-segment digital typeface.
 
   Carefully examine the image provided. Extract the following values:
   - Date: The date the reading was taken.
