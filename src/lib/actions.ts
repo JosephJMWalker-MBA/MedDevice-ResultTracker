@@ -1,3 +1,4 @@
+
 'use server';
 
 import { extractBloodPressureData, type ExtractBloodPressureDataInput, type ExtractBloodPressureDataOutput } from '@/ai/flows/extract-blood-pressure-data';
@@ -15,6 +16,7 @@ export async function callExtractDataAction(photoDataUri: string): Promise<Extra
       time: result.time || "",
       systolic: result.systolic || 0,
       diastolic: result.diastolic || 0,
+      pulse: result.pulse ?? undefined, // Ensure pulse is passed through
     };
   } catch (error) {
     console.error("Error in callExtractDataAction:", error);
