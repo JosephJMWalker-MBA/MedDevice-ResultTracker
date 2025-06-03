@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ReadingFormData, ReadingFormSchema, type OcrData, BodyPositionOptions, ExerciseContextOptions, StaticSymptomsList, type BloodPressureReading } from '@/lib/types';
 import { callExtractDataAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileScan, Loader2, CheckCircle, AlertCircle, CalendarClockIcon, Bike, Stethoscope, HeartPulseIcon } from 'lucide-react';
+import { UploadCloud, FileScan, Loader2, CheckCircle, AlertCircle, CalendarClockIcon, Bike, Stethoscope, HeartPulseIcon, Armchair } from 'lucide-react';
 import Image from 'next/image';
 import ExifReader from 'exifreader';
 
@@ -232,7 +232,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
             name="systolic"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Systolic (SYS)</FormLabel>
+                <FormLabel className="flex items-center">Systolic (SYS)</FormLabel>
                 <FormControl>
                   <Input type="number" placeholder="e.g., 120" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
                 </FormControl>
@@ -245,7 +245,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
             name="diastolic"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Diastolic (DIA)</FormLabel>
+                <FormLabel className="flex items-center">Diastolic (DIA)</FormLabel>
                 <FormControl>
                   <Input type="number" placeholder="e.g., 80" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
                 </FormControl>
@@ -277,7 +277,10 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
             name="bodyPosition"
             render={({ field }) => (
                 <FormItem>
-                <FormLabel>Body Position</FormLabel>
+                <FormLabel className="flex items-center gap-1">
+                    <Armchair className="h-4 w-4 text-muted-foreground" /> 
+                    Body Position
+                </FormLabel>
                 <Select onValueChange={field.onChange} value={field.value} >
                     <FormControl>
                     <SelectTrigger>
@@ -398,7 +401,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
         {isEditing ? (
-          FormContent // Render directly without Card if editing (inside modal)
+          FormContent 
         ) : (
           <Card className="shadow-lg">
             {FormContent}
