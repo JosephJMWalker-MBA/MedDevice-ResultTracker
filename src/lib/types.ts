@@ -33,7 +33,14 @@ export interface BloodPressureReading {
   user_correction?: boolean; // True if user manually changed OCR'd values
   image_url?: string; // URL to original image in Firebase Storage
   heatmap_url?: string; // URL to glare heatmap overlay in Firebase Storage
-  ocr_raw?: OcrRawData | null; // Raw text from OCR for each field
+  ocr_raw?: OcrRawData | null; // Raw text from primary OCR for each field
+  // Fields for dual OCR consensus
+  consensus?: boolean; // True if both OCR engines agreed
+  ocr_alternates?: { // Raw string values from both engines if they disagreed
+    sys: (string | null)[];
+    dia: (string | null)[];
+    pul: (string | null)[];
+  } | null;
 }
 
 // This type represents the output from the (new hypothetical) backend image processing function
@@ -42,7 +49,14 @@ export interface ImageProcessingResult extends ExtractBloodPressureDataOutput {
   variance?: number;
   image_url?: string; // URL to original image in Firebase Storage
   heatmap_url?: string; // URL to glare heatmap overlay in Firebase Storage
-  ocr_raw?: OcrRawData | null;
+  ocr_raw?: OcrRawData | null; // Raw text from primary OCR for each field
+  // Dual OCR fields
+  consensus?: boolean;
+  ocr_alternates?: {
+    sys: (string | null)[];
+    dia: (string | null)[];
+    pul: (string | null)[];
+  } | null;
 }
 
 

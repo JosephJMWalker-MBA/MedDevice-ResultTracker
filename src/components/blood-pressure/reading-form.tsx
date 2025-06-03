@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ReadingFormData, ReadingFormSchema, type OcrData, BodyPositionOptions, ExerciseContextOptions, StaticSymptomsList, type OcrRawData, type ImageProcessingResult } from '@/lib/types';
 import { callExtractDataAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileScan, Loader2, CheckCircle, AlertCircle, CalendarClockIcon, Bike, Stethoscope, HeartPulseIcon, Armchair, EyeOff, RotateCcw } from 'lucide-react';
+import { UploadCloud, FileScan, Loader2, CheckCircle, AlertCircle, CalendarClockIcon, Bike, Stethoscope, HeartPulseIcon, Armchair, EyeOff, RotateCcw, AlertTriangle } from 'lucide-react';
 import Image from 'next/image';
 import ExifReader from 'exifreader';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -85,6 +85,8 @@ interface ReadingFormProps {
     image_url?: string;
     heatmap_url?: string;
     ocr_raw?: OcrRawData | null;
+    consensus?: boolean;
+    ocr_alternates?: ImageProcessingResult['ocr_alternates'];
   }) => void;
   initialData?: ReadingFormData; 
   isEditing?: boolean;
@@ -104,15 +106,18 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
   const { toast } = useToast();
   const [imagePreview, setImagePreview] = useState<string | null>(null); // For local blob URL
   const [isLoadingOcr, setIsLoadingOcr] = useState(false);
-  const [ocrProcessingStatus, setOcrProcessingStatus] = useState<'idle' | 'exif_applied' | 'ocr_done' | 'error' | 'glare_warning'>('idle');
+  const [ocrProcessingStatus, setOcrProcessingStatus] = useState<'idle' | 'exif_applied' | 'ocr_done' | 'error' | 'glare_warning' | 'consensus_fail'>('idle');
   
   const [glareDetected, setGlareDetected] = useState(false);
+  const [ocrDisagreement, setOcrDisagreement] = useState(false);
   const [ocrInitialValues, setOcrInitialValues] = useState<Partial<ReadingFormData> | null>(null);
   const [processedImageData, setProcessedImageData] = useState<{
     variance?: number;
-    image_url?: string; // This would be the URL from Firebase Storage (mocked for now)
-    heatmap_url?: string; // This would be the URL from Firebase Storage (mocked for now)
+    image_url?: string; 
+    heatmap_url?: string; 
     ocr_raw?: OcrRawData | null;
+    consensus?: boolean;
+    ocr_alternates?: ImageProcessingResult['ocr_alternates'];
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -136,6 +141,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
     setImagePreview(null);
     setOcrProcessingStatus('idle');
     setGlareDetected(false);
+    setOcrDisagreement(false);
     setOcrInitialValues(null);
     setProcessedImageData(null);
     form.setValue('imageFile', undefined);
@@ -152,9 +158,8 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
   useEffect(() => {
     if (initialData) {
       form.reset(initialData);
-      resetImageState(); // Ensure image related states are also reset
+      resetImageState(); 
     } else {
-      // For new forms, set default date/time if not already set by EXIF/OCR
       if (!form.getValues('date')) {
         form.setValue('date', new Date().toISOString().split('T')[0]);
       }
@@ -167,7 +172,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
 
   const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    resetImageState(); // Reset previous image state first
+    resetImageState(); 
     
     if (file) {
       console.log("UserAction: Image selected by user", { name: file.name, size: file.size, type: file.type });
@@ -200,36 +205,43 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
         const dataUri = await fileToDataUri(file);
         const extractedResult: ImageProcessingResult = await callExtractDataAction(dataUri);
         
-        setProcessedImageData({ // Store backend URLs and raw OCR
+        setProcessedImageData({ 
             variance: extractedResult.variance,
-            image_url: extractedResult.image_url, // Mock URL from action
-            heatmap_url: extractedResult.heatmap_url, // Mock URL from action
+            image_url: extractedResult.image_url, 
+            heatmap_url: extractedResult.heatmap_url, 
             ocr_raw: extractedResult.ocr_raw,
+            consensus: extractedResult.consensus,
+            ocr_alternates: extractedResult.ocr_alternates,
         });
+        
+        const initialVals: Partial<ReadingFormData> = {};
+
+        if (extractedResult.date && !exifDateApplied) { form.setValue('date', extractedResult.date); initialVals.date = extractedResult.date;}
+        if (extractedResult.time && !exifDateApplied) { form.setValue('time', extractedResult.time); initialVals.time = extractedResult.time;}
+        if (extractedResult.systolic) { form.setValue('systolic', extractedResult.systolic as any); initialVals.systolic = extractedResult.systolic as any; }
+        if (extractedResult.diastolic) { form.setValue('diastolic', extractedResult.diastolic as any); initialVals.diastolic = extractedResult.diastolic as any; }
+        if (extractedResult.pulse != null) { form.setValue('pulse', extractedResult.pulse as any); initialVals.pulse = extractedResult.pulse as any; }
+        setOcrInitialValues(initialVals);
+
 
         if (extractedResult.glare_detected) {
           setGlareDetected(true);
           setOcrProcessingStatus('glare_warning');
           console.log("UserAction: Glare detected by backend", { variance: extractedResult.variance });
-          // Toast is now handled by the Alert display
-        } else {
+        } else if (extractedResult.consensus === false) {
+          setOcrDisagreement(true);
+          setOcrProcessingStatus('consensus_fail');
+          toast({ title: 'OCR Disagreement', description: 'Could not confidently read all numbers. Please verify.', variant: 'default', className: 'bg-yellow-50 border-yellow-500 text-yellow-700 dark:bg-yellow-900/50 dark:border-yellow-600 dark:text-yellow-300 [&>svg]:text-yellow-600' });
+          console.log("UserAction: OCR disagreement", { alternates: extractedResult.ocr_alternates, raw: extractedResult.ocr_raw });
+        } else { // No glare, consensus true
           setGlareDetected(false);
-          const initialVals: Partial<ReadingFormData> = {};
-          // Apply date/time from OCR ONLY if not already set by EXIF
-          if (extractedResult.date && !exifDateApplied) form.setValue('date', extractedResult.date);
-          if (extractedResult.time && !exifDateApplied) form.setValue('time', extractedResult.time);
-
-          if (extractedResult.systolic) { form.setValue('systolic', extractedResult.systolic as any); initialVals.systolic = extractedResult.systolic as any; }
-          if (extractedResult.diastolic) { form.setValue('diastolic', extractedResult.diastolic as any); initialVals.diastolic = extractedResult.diastolic as any; }
-          if (extractedResult.pulse != null) { form.setValue('pulse', extractedResult.pulse as any); initialVals.pulse = extractedResult.pulse as any; }
-          setOcrInitialValues(initialVals);
-
-          if (extractedResult.systolic || extractedResult.diastolic || extractedResult.pulse) {
+          setOcrDisagreement(false);
+           if (extractedResult.systolic || extractedResult.diastolic || extractedResult.pulse) {
               toast({ title: 'OCR Success', description: 'Data extracted. Please verify.' });
-              console.log("UserAction: OCR data applied", { values: initialVals, raw: extractedResult.ocr_raw });
+              console.log("UserAction: OCR data applied with consensus", { values: initialVals, raw: extractedResult.ocr_raw });
           } else {
               toast({ title: 'OCR Partial/No Data', description: 'Could not extract all values. Please enter manually.' });
-              console.log("UserAction: OCR data partially applied or no data found", { raw: extractedResult.ocr_raw });
+              console.log("UserAction: OCR data partially applied or no data found (with consensus)", { raw: extractedResult.ocr_raw });
           }
           setOcrProcessingStatus(exifDateApplied ? 'exif_applied' : 'ocr_done');
         }
@@ -246,7 +258,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
 
   const onSubmit: SubmitHandler<ReadingFormData> = (data) => {
     let user_correction = false;
-    if (ocrInitialValues) { // If OCR attempted to fill values
+    if (ocrInitialValues) { 
       if ( (data.systolic !== ocrInitialValues.systolic && ocrInitialValues.systolic !== undefined) ||
            (data.diastolic !== ocrInitialValues.diastolic && ocrInitialValues.diastolic !== undefined) ||
            ((data.pulse ?? null) !== (ocrInitialValues.pulse ?? null) && ocrInitialValues.pulse !== undefined)
@@ -255,9 +267,8 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
         console.log("UserAction: OCR data corrected by user", { ocr: ocrInitialValues, user: data });
       }
     } else if (imagePreview && (data.systolic || data.diastolic || data.pulse)) { 
-      // Image was uploaded, no OCR values (e.g. due to glare), but user entered manually
       user_correction = true; 
-      console.log("UserAction: Manual entry after image upload (no OCR data or glare)", { data });
+      console.log("UserAction: Manual entry after image upload (no OCR data or glare/disagreement)", { data });
     }
 
     onFormSubmit(data, {
@@ -267,8 +278,10 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
         image_url: processedImageData?.image_url,
         heatmap_url: processedImageData?.heatmap_url,
         ocr_raw: processedImageData?.ocr_raw,
+        consensus: processedImageData?.consensus,
+        ocr_alternates: processedImageData?.ocr_alternates,
     }); 
-    console.log("UserAction: Form submitted", { data, additionalData: { glareDetected, variance: processedImageData?.variance, user_correction } });
+    console.log("UserAction: Form submitted", { data, additionalData: { ...processedImageData, user_correction } });
 
 
     if (!isEditing) { 
@@ -283,7 +296,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
         symptoms: [],
         imageFile: undefined,
       });
-      resetImageState(); // Reset all image related states
+      resetImageState(); 
     }
   };
 
@@ -304,20 +317,20 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
         <FormField
           control={form.control}
           name="imageFile"
-          render={({ field }) => ( // field only used for react-hook-form registration
+          render={({ field }) => ( 
             <FormItem>
               <FormLabel htmlFor="imageFile-input">Upload Image (Optional)</FormLabel>
               <FormControl>
                 <Input
-                  id="imageFile-input" // ensure unique id if 'imageFile' is used elsewhere
+                  id="imageFile-input" 
                   type="file"
                   accept="image/*"
-                  ref={fileInputRef} // Use ref for clearing
+                  ref={fileInputRef} 
                   onChange={(e) => {
-                    // field.onChange(e.target.files); // react-hook-form handles file object if needed
                     handleImageChange(e);
                   }}
                   className="file:text-primary file:font-semibold hover:file:bg-primary/10"
+                  disabled={isLoadingOcr}
                 />
               </FormControl>
               <FormDescription>EXIF date/time and OCR will be attempted. Image quality affects accuracy.</FormDescription>
@@ -326,7 +339,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                 <div className="mt-4 space-y-3">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-1">Your Uploaded Image:</p>
-                    <div className="relative w-full max-w-xs h-auto rounded-md overflow-hidden border aspect-[4/3]">
+                    <div className="relative w-full max-w-xs h-auto rounded-md overflow-hidden border aspect-[4/3] bg-slate-100">
                         <Image src={imagePreview} alt="Reading preview" layout="fill" objectFit="contain" data-ai-hint="medical device"/>
                         {processedImageData?.heatmap_url && (
                             <Image 
@@ -344,8 +357,8 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                 </div>
               )}
               {isLoadingOcr && <div className="flex items-center mt-2 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing image...</div>}
-              {!isLoadingOcr && ocrProcessingStatus === 'exif_applied' && <div className="flex items-center mt-2 text-sm text-blue-600"><CalendarClockIcon className="mr-2 h-4 w-4" /> EXIF applied. OCR results also applied if successful.</div>}
-              {!isLoadingOcr && ocrProcessingStatus === 'ocr_done' && !glareDetected && <div className="flex items-center mt-2 text-sm text-green-600"><CheckCircle className="mr-2 h-4 w-4" /> OCR successful. Please verify values.</div>}
+              {!isLoadingOcr && ocrProcessingStatus === 'exif_applied' && <div className="flex items-center mt-2 text-sm text-blue-600"><CalendarClockIcon className="mr-2 h-4 w-4" /> EXIF applied. OCR results also applied if successful and consensus met.</div>}
+              {!isLoadingOcr && ocrProcessingStatus === 'ocr_done' && !glareDetected && !ocrDisagreement && <div className="flex items-center mt-2 text-sm text-green-600"><CheckCircle className="mr-2 h-4 w-4" /> OCR successful. Please verify values.</div>}
               {!isLoadingOcr && ocrProcessingStatus === 'error' && <div className="flex items-center mt-2 text-sm text-destructive"><AlertCircle className="mr-2 h-4 w-4" /> OCR failed. Please enter manually.</div>}
             </FormItem>
           )}
@@ -366,6 +379,35 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                 </Button>
             </Alert>
         )}
+        {ocrDisagreement && !glareDetected && ocrProcessingStatus === 'consensus_fail' && !isLoadingOcr && (
+             <Alert variant="default" className="border-yellow-500/50 text-yellow-700 bg-yellow-50 [&>svg]:text-yellow-600 dark:border-yellow-600/50 dark:text-yellow-400 dark:bg-yellow-900/30 dark:[&>svg]:text-yellow-500">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Couldn't Confirm Reading</AlertTitle>
+                <AlertDescription className="space-y-2">
+                <p>
+                    We couldn't confidently read all numbers from the photo. The values below are our best guess. 
+                    Please verify them carefully or retake the photo.
+                </p>
+                {/* 
+                // Optional: Display alternate values if design allows 
+                {processedImageData?.ocr_alternates && (
+                    <div>
+                        <p className="text-xs font-semibold mt-1">Detected options (Primary / Secondary):</p>
+                        <ul className="text-xs list-disc list-inside">
+                            {processedImageData.ocr_alternates.sys.some(s => s !== null) && <li>Systolic: {processedImageData.ocr_alternates.sys.filter(s=>s).join(' / ') || "N/A"}</li>}
+                            {processedImageData.ocr_alternates.dia.some(s => s !== null) && <li>Diastolic: {processedImageData.ocr_alternates.dia.filter(s=>s).join(' / ') || "N/A"}</li>}
+                            {processedImageData.ocr_alternates.pul.some(s => s !== null) && <li>Pulse: {processedImageData.ocr_alternates.pul.filter(s=>s).join(' / ') || "N/A"}</li>}
+                        </ul>
+                    </div>
+                )}
+                */}
+                </AlertDescription>
+                 <Button type="button" variant="outline" size="sm" onClick={handleRetakePhoto} className="mt-3">
+                    <RotateCcw className="mr-2 h-4 w-4"/>
+                    Retake Photo
+                </Button>
+            </Alert>
+        )}
         </>
        )}
 
@@ -377,7 +419,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
               <FormItem>
                 <FormLabel>Date</FormLabel>
                 <FormControl>
-                  <Input type="date" {...field} />
+                  <Input type="date" {...field} disabled={isLoadingOcr}/>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -390,7 +432,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
               <FormItem>
                 <FormLabel>Time</FormLabel>
                 <FormControl>
-                  <Input type="time" {...field} />
+                  <Input type="time" {...field} disabled={isLoadingOcr}/>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -406,7 +448,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
               <FormItem>
                 <FormLabel className="flex items-center">Systolic (SYS)</FormLabel>
                 <FormControl>
-                  <Input type="number" placeholder="e.g., 120" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
+                  <Input type="number" placeholder="e.g., 120" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} disabled={isLoadingOcr}/>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -419,7 +461,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
               <FormItem>
                 <FormLabel className="flex items-center">Diastolic (DIA)</FormLabel>
                 <FormControl>
-                  <Input type="number" placeholder="e.g., 80" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
+                  <Input type="number" placeholder="e.g., 80" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} disabled={isLoadingOcr}/>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -435,7 +477,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                     Pulse (bpm)
                 </FormLabel>
                 <FormControl>
-                  <Input type="number" placeholder="e.g., 70" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} />
+                  <Input type="number" placeholder="e.g., 70" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} disabled={isLoadingOcr}/>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -453,7 +495,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                     <Armchair className="h-4 w-4 text-muted-foreground" /> 
                     Body Position
                 </FormLabel>
-                <Select onValueChange={field.onChange} value={field.value} >
+                <Select onValueChange={field.onChange} value={field.value} disabled={isLoadingOcr} >
                     <FormControl>
                     <SelectTrigger>
                         <SelectValue placeholder="Select body position" />
@@ -478,7 +520,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
                     <Bike className="h-4 w-4 text-muted-foreground" />
                     Exercise Context
                 </FormLabel>
-                <Select onValueChange={field.onChange} value={field.value} >
+                <Select onValueChange={field.onChange} value={field.value} disabled={isLoadingOcr}>
                     <FormControl>
                     <SelectTrigger>
                         <SelectValue placeholder="Select exercise context" />
@@ -563,7 +605,7 @@ export default function ReadingForm({ onFormSubmit, initialData, isEditing = fal
         <Button 
             type="submit" 
             className={`w-full md:w-auto ${isEditing ? '' : 'md:w-auto'}`} 
-            disabled={isLoadingOcr || form.formState.isSubmitting || isLoadingExternally || (ocrProcessingStatus === 'glare_warning' && !form.formState.isDirty) }
+            disabled={isLoadingOcr || form.formState.isSubmitting || isLoadingExternally || (glareDetected && !form.formState.isDirty && !isEditing) || (ocrDisagreement && !form.formState.isDirty && !isEditing) }
         >
           {form.formState.isSubmitting || isLoadingExternally ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
           {isEditing ? 'Update Reading' : 'Add Reading'}

@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile, Symptom, BodyPosition, ExerciseContext, OcrRawData } from '@/lib/types';
+import type { BloodPressureReading, TrendAnalysisResult, ReadingFormData, UserProfile, Symptom, BodyPosition, ExerciseContext, OcrRawData, ImageProcessingResult } from '@/lib/types';
 import { BodyPositionOptions, ExerciseContextOptions } from '@/lib/types';
 import { callAnalyzeTrendAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -112,6 +112,8 @@ export default function HomePage() {
           image_url: typeof reading.image_url === 'string' ? reading.image_url : undefined,
           heatmap_url: typeof reading.heatmap_url === 'string' ? reading.heatmap_url : undefined,
           ocr_raw: typeof reading.ocr_raw === 'object' ? reading.ocr_raw : undefined,
+          consensus: typeof reading.consensus === 'boolean' ? reading.consensus : undefined,
+          ocr_alternates: typeof reading.ocr_alternates === 'object' ? reading.ocr_alternates : undefined,
         })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       }
       setReadings(loadedReadings);
@@ -159,6 +161,8 @@ export default function HomePage() {
       image_url?: string;
       heatmap_url?: string;
       ocr_raw?: OcrRawData | null;
+      consensus?: boolean;
+      ocr_alternates?: ImageProcessingResult['ocr_alternates'];
     }
   ) => {
     if (currentEditingReading) { 
@@ -173,14 +177,14 @@ export default function HomePage() {
               bodyPosition: data.bodyPosition,
               exerciseContext: data.exerciseContext,
               symptoms: data.symptoms || [],
-              // Assume additionalData is not relevant for edits, or handle if needed
-              // For simplicity, edit keeps existing additional data unless explicitly changed by form
-              glare_detected: r.glare_detected, 
-              variance: r.variance,
+              glare_detected: additionalData.glare_detected !== undefined ? additionalData.glare_detected : r.glare_detected,
+              variance: additionalData.variance !== undefined ? additionalData.variance : r.variance,
               user_correction: additionalData.user_correction !== undefined ? additionalData.user_correction : r.user_correction,
-              image_url: r.image_url,
-              heatmap_url: r.heatmap_url,
-              ocr_raw: r.ocr_raw,
+              image_url: additionalData.image_url !== undefined ? additionalData.image_url : r.image_url,
+              heatmap_url: additionalData.heatmap_url !== undefined ? additionalData.heatmap_url : r.heatmap_url,
+              ocr_raw: additionalData.ocr_raw !== undefined ? additionalData.ocr_raw : r.ocr_raw,
+              consensus: additionalData.consensus !== undefined ? additionalData.consensus : r.consensus,
+              ocr_alternates: additionalData.ocr_alternates !== undefined ? additionalData.ocr_alternates : r.ocr_alternates,
             }
           : r
       ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -204,6 +208,8 @@ export default function HomePage() {
         image_url: additionalData.image_url,
         heatmap_url: additionalData.heatmap_url,
         ocr_raw: additionalData.ocr_raw,
+        consensus: additionalData.consensus,
+        ocr_alternates: additionalData.ocr_alternates,
       };
       const updatedReadings = [...readings, newReading].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setReadings(updatedReadings);
@@ -230,7 +236,6 @@ export default function HomePage() {
     }
   };
   
-  // For editing, we pass the core form data. The `additionalData` for new readings is handled separately in handleFormSubmit.
   const editingReadingFormData: ReadingFormData | undefined = currentEditingReading ? {
     date: currentEditingReading.timestamp.split('T')[0],
     time: new Date(currentEditingReading.timestamp).toLocaleTimeString('en-CA', { hour12: false, hour: '2-digit', minute: '2-digit' }),
@@ -240,7 +245,6 @@ export default function HomePage() {
     bodyPosition: currentEditingReading.bodyPosition,
     exerciseContext: currentEditingReading.exerciseContext,
     symptoms: currentEditingReading.symptoms || [],
-    // imageFile is not persisted, so it won't be part of initialData for editing
   } : undefined;
 
 
@@ -302,7 +306,6 @@ export default function HomePage() {
             </AlertDialog>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => { setShowEditModal(false); setCurrentEditingReading(null); setShowDeleteConfirm(false); }}>Cancel</Button>
-              {/* Update button is part of the ReadingForm, submitted via its own logic */}
             </div>
           </DialogFooter>
         </DialogContent>
