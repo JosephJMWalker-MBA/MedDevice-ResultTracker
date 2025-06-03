@@ -10,16 +10,90 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { UserProfileFormData, UserProfileSchema, RaceEthnicityOptions, GenderOptions, UserProfile, PreferredMailClientOptions, PreferredMailClient } from '@/lib/types';
+import { UserProfileFormData, UserProfileSchema, RaceEthnicityOptions, GenderOptions, UserProfile, PreferredMailClientOptions } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { Save, UserCog, BellRing, BellOff, Mail } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Save, UserCog, CalendarPlus, Mail } from 'lucide-react'; // Removed BellRing, BellOff
+
+// Helper function to format date for ICS (UTC based for DTSTAMP, local for event time)
+function formatDateForICS(date: Date, isUtc: boolean = true): string {
+  if (isUtc) {
+    const year = date.getUTCFullYear();
+    const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+    const day = date.getUTCDate().toString().padStart(2, '0');
+    const hours = date.getUTCHours().toString().padStart(2, '0');
+    const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+    const seconds = date.getUTCSeconds().toString().padStart(2, '0');
+    return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
+  } else {
+    // Local time for event display
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${year}${month}${day}T${hours}${minutes}00`;
+  }
+}
+
+// Function to generate ICS content
+function generateICSContent(preferredTime: string): string {
+  const now = new Date();
+  const [hours, minutes] = preferredTime.split(':').map(Number);
+
+  let eventDate = new Date(); // Use local timezone for setting the event
+  eventDate.setHours(hours, minutes, 0, 0);
+
+  // If the preferred time today has already passed, schedule it for tomorrow.
+  if (eventDate.getTime() <= now.getTime()) {
+    eventDate.setDate(eventDate.getDate() + 1);
+  }
+
+  const dtstamp = formatDateForICS(new Date(), true); // Current time in UTC for DTSTAMP
+  const dtstart = formatDateForICS(eventDate, false); // Event start time in local time
+  const dtend = dtstart; // For an instant reminder, end can be same as start
+
+  const uid = `pressuretrackai-reminder-${Date.now()}@pressuretrack.ai`;
+
+  const icsContent = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//PressureTrackAI//ReminderFile//EN',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${dtstamp}`,
+    `DTSTART;TZID=${Intl.DateTimeFormat().resolvedOptions().timeZone}:${dtstart}`, // Specify local timezone
+    `DTEND;TZID=${Intl.DateTimeFormat().resolvedOptions().timeZone}:${dtend}`,
+    'SUMMARY:Take Blood Pressure Reading',
+    'DESCRIPTION:Reminder from PressureTrack AI to take your blood pressure reading.',
+    'BEGIN:VALARM',
+    'TRIGGER:-PT0M', // Alert at the time of the event
+    'ACTION:DISPLAY',
+    'DESCRIPTION:Reminder: Take Blood Pressure Reading',
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+
+  return icsContent;
+}
+
+// Function to trigger download
+function downloadICSFile(icsContent: string, filename: string = 'PressureTrackAIReminder.ics') {
+  if (typeof window === 'undefined') return;
+  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+}
+
 
 export default function ProfileForm() {
   const { toast } = useToast();
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
-  const reminderTimeoutIdRef = useRef<NodeJS.Timeout | null>(null);
-
+  
   const form = useForm<UserProfileFormData>({
     resolver: zodResolver(UserProfileSchema),
     defaultValues: {
@@ -36,104 +110,28 @@ export default function ProfileForm() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      if ('Notification' in window) {
-        setNotificationPermission(Notification.permission);
-      }
       try {
         const storedProfileRaw = localStorage.getItem('bpUserProfile');
         if (storedProfileRaw) {
           const storedProfile: UserProfile = JSON.parse(storedProfileRaw);
-          if (form) {
-            form.reset({
-              age: storedProfile.age ?? null,
-              weightLbs: storedProfile.weightLbs ?? null,
-              raceEthnicity: storedProfile.raceEthnicity ?? null,
-              gender: storedProfile.gender ?? null,
-              medicalConditions: Array.isArray(storedProfile.medicalConditions) ? storedProfile.medicalConditions.join(', ') : (storedProfile.medicalConditions || ''),
-              medications: storedProfile.medications || '',
-              preferredReminderTime: storedProfile.preferredReminderTime || null,
-              preferredMailClient: storedProfile.preferredMailClient || null,
-            });
-          }
+          form.reset({
+            age: storedProfile.age ?? null,
+            weightLbs: storedProfile.weightLbs ?? null,
+            raceEthnicity: storedProfile.raceEthnicity ?? null,
+            gender: storedProfile.gender ?? null,
+            medicalConditions: Array.isArray(storedProfile.medicalConditions) ? storedProfile.medicalConditions.join(', ') : (storedProfile.medicalConditions || ''),
+            medications: storedProfile.medications || '',
+            preferredReminderTime: storedProfile.preferredReminderTime || null,
+            preferredMailClient: storedProfile.preferredMailClient || null,
+          });
         }
       } catch (error) {
         console.error("Failed to load user profile from localStorage:", error);
-        if (toast) {
-          toast({ variant: 'destructive', title: 'Load Error', description: 'Could not load your profile.' });
-        }
+        toast({ variant: 'destructive', title: 'Load Error', description: 'Could not load your profile.' });
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
-
-  const handleRequestPermission = async () => {
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      if (toast) {
-        toast({ variant: 'destructive', title: 'Unsupported', description: 'Notifications are not supported by your browser.' });
-      }
-      return;
-    }
-    const permission = await Notification.requestPermission();
-    setNotificationPermission(permission);
-    if (toast) {
-      if (permission === 'granted') {
-        toast({ title: 'Permissions Granted', description: 'You will now receive reminders.' });
-      } else if (permission === 'denied') {
-        toast({ variant: 'destructive', title: 'Permissions Denied', description: 'Notifications blocked. You can enable them in browser settings.' });
-      } else {
-        toast({ title: 'Permissions Undetermined', description: 'Notification permission not yet granted or denied.' });
-      }
-    }
-  };
-
-  const scheduleReminder = useCallback(() => {
-    if (reminderTimeoutIdRef.current) {
-      clearTimeout(reminderTimeoutIdRef.current);
-      reminderTimeoutIdRef.current = null;
-    }
-    
-    if (typeof window === 'undefined') return; 
-
-    const preferredReminderTimeValue = form.getValues('preferredReminderTime');
-
-    if (notificationPermission === 'granted' && preferredReminderTimeValue) {
-      const [hours, minutes] = preferredReminderTimeValue.split(':').map(Number);
-      const now = new Date();
-      let reminderDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
-
-      if (reminderDateTime.getTime() <= now.getTime()) {
-        reminderDateTime.setDate(reminderDateTime.getDate() + 1);
-      }
-
-      const delay = reminderDateTime.getTime() - now.getTime();
-
-      if (delay > 0) {
-        const newTimeoutId = setTimeout(() => {
-          try {
-            if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification('PressureTrack AI Reminder', {
-                body: 'Time to take your blood pressure reading!',
-              });
-            }
-          } catch (e) {
-            console.error("Error showing notification:", e)
-          }
-          scheduleReminder(); 
-        }, delay);
-        reminderTimeoutIdRef.current = newTimeoutId;
-      }
-    }
-  }, [notificationPermission, form]);
-
-  useEffect(() => {
-    scheduleReminder();
-    return () => {
-      if (reminderTimeoutIdRef.current) {
-        clearTimeout(reminderTimeoutIdRef.current);
-      }
-    };
-  }, [scheduleReminder, form.watch('preferredReminderTime')]);
-
 
   const onSubmit: SubmitHandler<UserProfileFormData> = (data) => {
     try {
@@ -154,15 +152,21 @@ export default function ProfileForm() {
       if (typeof window !== 'undefined') {
         localStorage.setItem('bpUserProfile', JSON.stringify(profileToSave));
       }
-      if (toast) {
-        toast({ title: 'Profile Saved', description: 'Your profile information has been updated.' });
-      }
-      scheduleReminder();
+      toast({ title: 'Profile Saved', description: 'Your profile information has been updated.' });
     } catch (error) {
       console.error("Failed to save user profile to localStorage:", error);
-      if (toast) {
-        toast({ variant: 'destructive', title: 'Save Error', description: 'Could not save your profile.' });
-      }
+      toast({ variant: 'destructive', title: 'Save Error', description: 'Could not save your profile.' });
+    }
+  };
+
+  const handleCreateReminderFile = () => {
+    const preferredTime = form.getValues('preferredReminderTime');
+    if (preferredTime) {
+      const icsString = generateICSContent(preferredTime);
+      downloadICSFile(icsString);
+      toast({ title: 'Reminder File Created', description: 'PressureTrackAIReminder.ics has been downloaded. Open it to add to your calendar.' });
+    } else {
+      toast({ variant: 'destructive', title: 'No Time Set', description: 'Please set a preferred reminder time first.' });
     }
   };
   
@@ -171,6 +175,7 @@ export default function ProfileForm() {
     ? medicalConditionsValue.join(', ') 
     : (typeof medicalConditionsValue === 'string' ? medicalConditionsValue : '');
 
+  const preferredReminderTimeValue = form.watch('preferredReminderTime');
 
   return (
     <Card className="shadow-lg max-w-2xl mx-auto">
@@ -334,61 +339,29 @@ export default function ProfileForm() {
               name="preferredReminderTime"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Preferred Reminder Time</FormLabel>
+                  <FormLabel>Preferred Reminder Time (for .ics file)</FormLabel>
                   <FormControl>
                     <Input type="time" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value || null)} />
                   </FormControl>
-                  <FormDescription>Set a time you'd like to be reminded to take your reading. Notifications work best if this page is kept open.</FormDescription>
+                  <FormDescription>Set a time for the reminder event in the generated .ics file. Import this file into your calendar app.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
-
-            {typeof window !== 'undefined' && 'Notification' in window && (
-              <FormItem>
-                <FormLabel>Notification Settings</FormLabel>
-                {notificationPermission === 'granted' && (
-                  <Alert variant="default" className="bg-green-50 border-green-300 text-green-800 [&>svg]:text-green-600 dark:bg-green-900/30 dark:border-green-700 dark:text-green-300 dark:[&>svg]:text-green-500">
-                    <BellRing className="h-5 w-5" />
-                    <AlertTitle>Reminders Enabled</AlertTitle>
-                    <AlertDescription>
-                      You will receive a reminder at your preferred time if this page is open.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                {notificationPermission === 'denied' && (
-                  <Alert variant="destructive">
-                    <BellOff className="h-5 w-5" />
-                    <AlertTitle>Reminders Disabled</AlertTitle>
-                    <AlertDescription>
-                      Notifications are blocked by your browser. To enable them, please adjust your browser's site settings for this page.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                {notificationPermission === 'default' && (
-                  <Alert>
-                    <BellRing className="h-5 w-5" />
-                    <AlertTitle>Setup Reminders</AlertTitle>
-                    <AlertDescription>
-                      Allow notifications to get reminders at your preferred time.
-                       <Button type="button" variant="link" onClick={handleRequestPermission} className="p-0 h-auto ml-1">Enable Notifications</Button>
-                    </AlertDescription>
-                  </Alert>
-                )}
-                 {notificationPermission !== 'default' && notificationPermission !== 'denied' && (
-                   <Button type="button" variant="outline" size="sm" onClick={handleRequestPermission} className="mt-2">
-                      Test Notification Permission
-                   </Button>
-                 )}
-              </FormItem>
-            )}
-
-
           </CardContent>
-          <CardFooter>
-            <Button type="submit" className="w-full md:w-auto">
+          <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <Button type="submit">
               <Save className="mr-2 h-4 w-4" />
               Save Profile
+            </Button>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={handleCreateReminderFile} 
+              disabled={!preferredReminderTimeValue}
+            >
+              <CalendarPlus className="mr-2 h-4 w-4" />
+              Create Reminder File (.ics)
             </Button>
           </CardFooter>
         </form>
@@ -396,3 +369,4 @@ export default function ProfileForm() {
     </Card>
   );
 }
+
