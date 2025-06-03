@@ -24,9 +24,16 @@ export default function AppHeader() {
       e.preventDefault();
       setInstallPrompt(e as BeforeInstallPromptEvent);
       setIsAppInstallable(true);
-      console.log('beforeinstallprompt event fired');
+      console.log('beforeinstallprompt event fired', e); // Added log
     };
     window.addEventListener('beforeinstallprompt', handler);
+    
+    // Also check if the app is already installed
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      console.log('App is already installed or in standalone mode.');
+      setIsAppInstallable(false); // Don't show install button if already standalone
+    }
+
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 

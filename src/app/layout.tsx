@@ -7,17 +7,17 @@ import './globals.css';
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toaster";
 import AppHeader from '@/components/layout/app-header';
-import ClientLayoutEffects from '@/components/layout/client-layout-effects'; // New import
+import ClientLayoutEffects from '@/components/layout/client-layout-effects'; 
 
 const fontSans = FontSans({
   subsets: ["latin"],
   variable: "--font-sans",
 });
 
-export const metadata: Metadata = { // This can now be exported
+export const metadata: Metadata = { 
   title: 'PressureTrack AI',
   description: 'Track and understand your blood pressure readings with AI insights.',
-  manifest: '/manifest.json',
+  manifest: '/manifest.json', 
 };
 
 export default function RootLayout({
@@ -25,12 +25,12 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // useEffect for service worker registration removed from here
-
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Other head elements */}
+        <meta property="og:image" content="https://placehold.co/1200x630.png?text=PressureTrackOG" data-ai-hint="app logo banner health" />
+        <link rel="icon" href="https://placehold.co/48x48.png?text=Favicon" data-ai-hint="app icon health" type="image/png" />
+        <link rel="apple-touch-icon" href="https://placehold.co/180x180.png?text=AppleIcon" data-ai-hint="app icon health" />
       </head>
       <body
         className={cn(
@@ -38,7 +38,7 @@ export default function RootLayout({
           fontSans.variable
         )}
       >
-        <ClientLayoutEffects /> {/* Render the client effects component */}
+        <ClientLayoutEffects /> 
         <div className="relative flex min-h-screen flex-col">
           <AppHeader />
           <main className="flex-1">{children}</main>
